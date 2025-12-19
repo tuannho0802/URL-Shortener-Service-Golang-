@@ -50,15 +50,6 @@ Click Analytics: Real-time tracking of total visits per link.
 ```
 
 
-## Environment Variables
-
-To run this project, you will need to add the following environment variables to your .env file
-
-`API_KEY`
-
-`ANOTHER_API_KEY`
-
-
 ## 📝 Technical Decisions
 
 1. Zero-Configuration DB: SQLite was chosen to ensure the project is "Plug and Play" for recruiters. No Docker or external SQL server is required to review the code.

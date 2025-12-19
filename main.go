@@ -16,6 +16,9 @@ func main() {
 	// Create db
 	store.InitDB()
 
+	// Hub manage socket
+	go handlers.MainHub.Run()
+
 	r := gin.Default()
 	// Connect the frontend
 	r.Static("/static", "./static")
@@ -30,6 +33,8 @@ func main() {
 	r.POST("/shorten", handlers.CreateShortLink) // Create Link
 
 	r.GET("/links", handlers.GetAllLinks) // Get Link List
+
+	r.GET("/ws", handlers.HandleWebSocket)
 
 	r.GET("/:code", handlers.RedirectLink) // Redirect Link
 

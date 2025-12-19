@@ -296,6 +296,32 @@
         );
         loadLinks();
       };
+
+      // Define connect WebSocket
+      const socket = new WebSocket(
+        `ws://${window.location.host}/ws`
+      );
+
+      socket.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        if (data.action === "update_links") {
+          console.log(
+            "Dữ liệu đã thay đổi! Đang cập nhật danh sách..."
+          );
+          loadLinks(); // Recall loadlinks for new data
+        }
+      };
+
+      socket.onclose = function () {
+        console.log(
+          "Mất kết nối WebSocket. Đang thử kết nối lại..."
+        );
+        // auto reconnect
+        setTimeout(
+          () => location.reload(),
+          5000
+        );
+      };
     </script>
   </body>
 </html>

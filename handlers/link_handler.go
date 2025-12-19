@@ -67,6 +67,9 @@ func CreateShortLink(c *gin.Context) {
 	}
 	store.DB.Create(&newLink)
 
+	// notify
+	go NotifyDataChange()
+
 	c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
@@ -89,6 +92,9 @@ func RedirectLink(c *gin.Context) {
 
 	// Update click if link is not expired
 	store.DB.Model(&link).Update("click_count", link.ClickCount+1)
+
+	// notify data
+	go NotifyDataChange()
 
 	// Redirect main page
 	c.Redirect(http.StatusFound, link.OriginalURL)
