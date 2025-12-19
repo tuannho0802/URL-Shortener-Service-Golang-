@@ -34,6 +34,7 @@
           id="longUrl"
           class="form-control"
           placeholder="https://example.com..."
+          onclick="this.select()"
           required
         />
       </div>
@@ -194,28 +195,57 @@
                 ? `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">⏱ Đang tính...</span>`
                 : `<span class="badge bg-light text-muted ms-2">∞</span>`;
 
+              //  Create icon or text for browser
+              let analyticsHtml = "";
+              if (l.last_browser || l.last_os) {
+                analyticsHtml = `
+        <div style="font-size: 0.7rem; line-height: 1.2;" class="text-muted mt-1">
+            <span title="Trình duyệt cuối cùng" class="badge border text-dark fw-normal">
+                🌐 ${l.last_browser || "N/A"}
+            </span>
+            <span title="Hệ điều hành cuối cùng" class="badge border text-dark fw-normal">
+                💻 ${l.last_os || "N/A"}
+            </span>
+        </div>
+    `;
+              }
+
               return `
-                <tr>
-                    <td><a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a></td>
-                    <td class="text-truncate" style="max-width: 200px;" title="${l.original_url}">${l.original_url}</td>
-                    <td><span class="fw-bold">${l.click_count}</span> ${timerHtml}</td>
-                    <td>
-                        <div class="d-flex align-items-center gap-2">
-                            <img src="${qrImageUrl}" alt="QR" style="width: 40px; cursor: pointer;" 
-                                 onclick="viewLargeQR('${qrImageUrl}')" title="Click để xem lớn">
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>
-                                <button class="btn btn-outline-secondary" onclick="copyQR('${qrImageUrl}')">📋</button>
-                            </div>
-                        </div>
-                    </td>
-                    <td>
-                        <div class="btn-group btn-group-sm">
-                            <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
-                            <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
-                        </div>
-                    </td>
-                </tr>`;
+             <tr>
+    <td>
+        <div class="d-flex align-items-center gap-2">
+            <a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a>
+            <button class="btn btn-sm btn-light border" 
+                    onclick="copyToClipboard('${shortFullUrl}')" 
+                    title="Copy link">
+                📋
+            </button>
+        </div>
+    </td>
+    <td class="text-truncate" style="max-width: 200px;" title="${l.original_url}">${l.original_url}</td>
+    <td>
+        <div>
+            <span class="fw-bold fs-5">${l.click_count}</span> clicks
+            ${timerHtml}
+        </div>
+        ${analyticsHtml} </td>
+    <td>
+        <div class="d-flex align-items-center gap-2">
+            <img src="${qrImageUrl}" alt="QR" style="width: 40px; cursor: pointer;" 
+                 onclick="viewLargeQR('${qrImageUrl}')" title="Click để xem lớn">
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>
+                <button class="btn btn-outline-secondary" onclick="copyQR('${qrImageUrl}')">📋</button>
+            </div>
+        </div>
+    </td>
+    <td>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
+            <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
+        </div>
+    </td>
+</tr>`;
             })
             .join("");
 
@@ -279,7 +309,6 @@
             { method: "DELETE" }
           );
           if (res.ok) {
-           
           } else {
             alert("Không thể xóa liên kết");
           }
@@ -320,6 +349,21 @@
         } catch (err) {
           console.error(err);
         }
+      }
+
+      // Copy link
+      function copyToClipboard(text) {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            console.log("Copied: " + text);
+            alert(
+              "Đã copy link thành công: " + text
+            );
+          })
+          .catch((err) => {
+            console.error("Lỗi copy: ", err);
+          });
       }
 
       // Download QR code

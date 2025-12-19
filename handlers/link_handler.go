@@ -3,6 +3,7 @@ package handlers
 import (
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,29 +76,52 @@ func CreateShortLink(c *gin.Context) {
 
 // API Redirect
 func RedirectLink(c *gin.Context) {
-	code := c.Param("code")
 	var link models.Link
+	code := c.Param("code")
 
-	// Find link in ShortCode
+	// check link exist
 	if err := store.DB.Where("short_code = ?", code).First(&link).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Link not found"})
+		c.JSON(404, gin.H{"error": "Link không tồn tại"})
 		return
 	}
 
-	// Check if link is expired
-	if link.ExpiredAt != nil && time.Now().After(*link.ExpiredAt) {
-		c.JSON(410, gin.H{"error": "Link này đã hết hạn và không còn khả dụng"})
-		return
+	// Check Browser from user agent
+	ua := c.GetHeader("User-Agent")
+	browser := "Unknown"
+	os := "Unknown"
+
+	// Logic check
+	if strings.Contains(ua, "Firefox") {
+		browser = "Firefox"
+	} else if strings.Contains(ua, "Chrome") && !strings.Contains(ua, "Edg") {
+		browser = "Chrome"
+	} else if strings.Contains(ua, "Safari") && !strings.Contains(ua, "Chrome") {
+		browser = "Safari"
+	} else if strings.Contains(ua, "Edg") {
+		browser = "Edge"
 	}
 
-	// Update click if link is not expired
-	store.DB.Model(&link).Update("click_count", link.ClickCount+1)
+	// Check OS
+	if strings.Contains(ua, "Windows") {
+		os = "Windows"
+	} else if strings.Contains(ua, "Macintosh") {
+		os = "MacOS"
+	} else if strings.Contains(ua, "Android") {
+		os = "Android"
+	} else if strings.Contains(ua, "iPhone") {
+		os = "iOS"
+	}
 
-	// notify data
+	// Update DB
+	store.DB.Model(&link).Updates(map[string]interface{}{
+		"click_count":  link.ClickCount + 1,
+		"last_browser": browser,
+		"last_os":      os,
+	})
+
 	go NotifyDataChange()
 
-	// Redirect main page
-	c.Redirect(http.StatusFound, link.OriginalURL)
+	c.Redirect(302, link.OriginalURL)
 }
 
 // API get all list
