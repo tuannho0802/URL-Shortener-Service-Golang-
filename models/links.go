@@ -9,4 +9,5 @@ type Link struct {
 	ShortCode   string    `gorm:"unique; not null" json:"short_code"` // unique short code
 	ClickCount  int       `gorm:"default:0" json:"click_count"`       // click count
 	CreatedAt   time.Time `json:"created_at"`
+	ExpiredAt   *time.Time `json:"expired_at"` // expired code
 }

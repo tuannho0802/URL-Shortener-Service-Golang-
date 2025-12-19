@@ -1,64 +1,195 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>URL Shortener - Finan Test</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="container py-5">
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="container py-5">
     <h2 class="mb-4">URL Shortener Service</h2>
-    
+
     <div class="card card-body mb-4">
-        <div class="mb-3">
-            <label>URL Gốc:</label>
-            <input type="text" id="longUrl" class="form-control" placeholder="https://example.com...">
-        </div>
-        <div class="mb-3">
-            <label>Custom Alias (Tùy chọn):</label>
-            <input type="text" id="customAlias" class="form-control" placeholder="vidu: khuyen-mai">
-        </div>
-        <button class="btn btn-primary" onclick="shortenUrl()">Tạo Link</button>
+      <div class="mb-3">
+        <label>URL Gốc:</label>
+        <input
+          type="text"
+          id="longUrl"
+          class="form-control"
+          placeholder="https://example.com..."
+        />
+      </div>
+      <div class="mb-3">
+        <label>Custom Alias (Tùy chọn):</label>
+        <input
+          type="text"
+          id="customAlias"
+          class="form-control"
+          placeholder="vidu: khuyen-mai"
+        />
+      </div>
+      <button
+        class="btn btn-primary"
+        onclick="shortenUrl()"
+      >
+        Tạo Link
+      </button>
     </div>
 
-    <div id="result" class="alert alert-success d-none">
-        Link của bạn: <a id="shortLink" href="#" target="_blank"></a>
-        <div id="qrcode" class="mt-2"></div>
+    <div
+      id="result"
+      class="alert alert-success d-none"
+    >
+      Link của bạn:
+      <a
+        id="shortLink"
+        href="#"
+        target="_blank"
+      ></a>
+      <div id="qrcode" class="mt-2"></div>
     </div>
 
     <h4>Danh sách Link</h4>
     <table class="table mt-3">
-        <thead><tr><th>Mã</th><th>Gốc</th><th>Clicks</th></tr></thead>
-        <tbody id="linkList"></tbody>
+      <thead>
+        <tr>
+          <th>Mã</th>
+          <th>Gốc</th>
+          <th>Clicks</th>
+        </tr>
+      </thead>
+      <tbody id="linkList"></tbody>
     </table>
 
     <script>
-        async function shortenUrl() {
-            const res = await fetch('/shorten', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    original_url: document.getElementById('longUrl').value,
-                    custom_alias: document.getElementById('customAlias').value 
-                })
-            });
-            const data = await res.json();
-            if (data.short_url) {
-                const box = document.getElementById('result');
-                box.classList.remove('d-none');
-                document.getElementById('shortLink').innerText = data.short_url;
-                document.getElementById('shortLink').href = data.short_url;
-                document.getElementById('qrcode').innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${data.short_url}">`;
-                loadLinks();
-            }
+      async function shortenUrl() {
+        const res = await fetch("/shorten", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            original_url:
+              document.getElementById("longUrl")
+                .value,
+            custom_alias:
+              document.getElementById(
+                "customAlias"
+              ).value,
+          }),
+        });
+        const data = await res.json();
+        if (data.short_url) {
+          const box =
+            document.getElementById("result");
+          box.classList.remove("d-none");
+          document.getElementById(
+            "shortLink"
+          ).innerText = data.short_url;
+          document.getElementById(
+            "shortLink"
+          ).href = data.short_url;
+          document.getElementById(
+            "qrcode"
+          ).innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${data.short_url}">`;
+          loadLinks();
         }
+      }
 
-        async function loadLinks() {
-            const res = await fetch('/links');
-            const data = await res.json();
-            document.getElementById('linkList').innerHTML = data.map(l => 
-                `<tr><td>${l.short_code}</td><td>${l.original_url}</td><td>${l.click_count}</td></tr>`
-            ).join('');
+      async function loadLinks() {
+        try {
+          const res = await fetch("/links");
+          if (!res.ok)
+            throw new Error(
+              "Không thể kết nối server"
+            );
+
+          const data = await res.json();
+          const list =
+            document.getElementById("linkList");
+
+          // check if data is empty
+          if (!data || data.length === 0) {
+            list.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
+            return;
+          }
+
+          list.innerHTML = data
+            .reverse()
+            .map((l) => {
+              let timerHtml = "";
+              if (l.expired_at) {
+                timerHtml = `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">Đang tính...</span>`;
+              } else {
+                timerHtml = `<span class="badge bg-light text-muted ms-2">∞</span>`;
+              }
+
+              return `
+                <tr>
+                    <td><a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a></td>
+                    <td class="text-truncate" style="max-width: 250px;">${l.original_url}</td>
+                    <td>
+                        <span class="fw-bold">${l.click_count}</span>
+                        ${timerHtml}
+                    </td>
+                </tr>
+            `;
+            })
+            .join("");
+
+          // Activate realtime counter
+          if (
+            typeof startRealtimeCounter ===
+            "function"
+          ) {
+            startRealtimeCounter();
+          }
+        } catch (err) {
+          console.error("Lỗi loadLinks:", err);
         }
+      }
+
+      function startRealtimeCounter() {
+        // Delete old interval
+        if (window.cntInterval)
+          clearInterval(window.cntInterval);
+
+        window.cntInterval = setInterval(() => {
+          document
+            .querySelectorAll(".countdown")
+            .forEach((el) => {
+              const expire = new Date(
+                el.getAttribute("data-expire")
+              ).getTime();
+              const now = new Date().getTime();
+              const diff = expire - now;
+
+              if (diff <= 0) {
+                el.innerHTML = "Hết hạn";
+                el.className =
+                  "badge bg-danger ms-2";
+              } else {
+                const h = Math.floor(
+                  diff / (1000 * 60 * 60)
+                );
+                const m = Math.floor(
+                  (diff % (1000 * 60 * 60)) /
+                    (1000 * 60)
+                );
+                const s = Math.floor(
+                  (diff % (1000 * 60)) / 1000
+                );
+                el.innerHTML = `⏱ ${h}h ${m}m ${s}s`;
+              }
+            });
+        }, 1000);
+      }
+
+      window.onload = function() {
+        console.log("Trang web đã tải xong, bắt đầu load data...");
         loadLinks();
+    };
     </script>
-</body>
+  </body>
 </html>

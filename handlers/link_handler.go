@@ -3,13 +3,14 @@ package handlers
 import (
 	"math/rand"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/models"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
 )
 
-// Hàm tạo chuỗi ngẫu nhiên cho ShortCode [cite: 24]
+// Generate random code
 func GenerateShortCode(n int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 	b := make([]rune, n)
@@ -19,39 +20,54 @@ func GenerateShortCode(n int) string {
 	return string(b)
 }
 
-// 1. API Tạo link rút gọn
+// Create short link
 func CreateShortLink(c *gin.Context) {
-    var input struct {
-        OriginalURL string `json:"original_url"`
-        CustomAlias string `json:"custom_alias"`
-    }
-    if err := c.ShouldBindJSON(&input); err != nil {
-        c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
-        return
-    }
 
-    var code string
-    if input.CustomAlias != "" {
-        // Check if Allias exist
-        var existing models.Link
-        if err := store.DB.Where("short_code = ?", input.CustomAlias).First(&existing).Error; err == nil {
-            c.JSON(400, gin.H{"error": "Alias này đã được sử dụng"})
-            return
-        }
-        code = input.CustomAlias
-    } else {
-        code = GenerateShortCode(6) // Generate 6 random code
-    }
+	var input struct {
+		OriginalURL string `json:"original_url"`
+		CustomAlias string `json:"custom_alias"`
+		// Add expires_in_days
+		ExpiresInDays int `json:"expires_in_days"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
 
-    // Save on db
-    newLink := models.Link{
-        OriginalURL: input.OriginalURL,
-        ShortCode:   code,
-        ClickCount:  0,
-    }
-    store.DB.Create(&newLink)
+	// Calculate the expiration date
+	var expiredAt *time.Time
+	if input.ExpiresInDays > 0 {
+		t := time.Now().AddDate(0, 0, input.ExpiresInDays)
+		expiredAt = &t
+	} else {
+		// Default 1 day
+		t := time.Now().Add(24 * time.Hour)
+		expiredAt = &t
+	}
 
-    c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})
+	var code string
+	if input.CustomAlias != "" {
+		// Check if Allias exist
+		var existing models.Link
+		if err := store.DB.Where("short_code = ?", input.CustomAlias).First(&existing).Error; err == nil {
+			c.JSON(400, gin.H{"error": "Alias này đã được sử dụng"})
+			return
+		}
+		code = input.CustomAlias
+	} else {
+		code = GenerateShortCode(6) // Generate 6 random code
+	}
+
+	// Save on db
+	newLink := models.Link{
+		OriginalURL: input.OriginalURL,
+		ShortCode:   code,
+		ClickCount:  0,
+		ExpiredAt:   expiredAt, // Store db
+	}
+	store.DB.Create(&newLink)
+
+	c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
 // 2. API Redirect
@@ -65,9 +81,14 @@ func RedirectLink(c *gin.Context) {
 		return
 	}
 
-	// Update click
-	link.ClickCount++
-	store.DB.Save(&link)
+	// Check if link is expired
+	if link.ExpiredAt != nil && time.Now().After(*link.ExpiredAt) {
+		c.JSON(410, gin.H{"error": "Link này đã hết hạn và không còn khả dụng"})
+		return
+	}
+
+	// Update click if link is not expired
+	store.DB.Model(&link).Update("click_count", link.ClickCount+1)
 
 	// Redirect main page
 	c.Redirect(http.StatusFound, link.OriginalURL)
