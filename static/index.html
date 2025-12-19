@@ -18,6 +18,7 @@
           id="longUrl"
           class="form-control"
           placeholder="https://example.com..."
+          required
         />
       </div>
       <div class="mb-3">
@@ -64,36 +65,60 @@
 
     <script>
       async function shortenUrl() {
-        const res = await fetch("/shorten", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            original_url:
-              document.getElementById("longUrl")
-                .value,
-            custom_alias:
-              document.getElementById(
-                "customAlias"
-              ).value,
-          }),
-        });
-        const data = await res.json();
-        if (data.short_url) {
-          const box =
-            document.getElementById("result");
-          box.classList.remove("d-none");
-          document.getElementById(
-            "shortLink"
-          ).innerText = data.short_url;
-          document.getElementById(
-            "shortLink"
-          ).href = data.short_url;
-          document.getElementById(
-            "qrcode"
-          ).innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${data.short_url}">`;
-          loadLinks();
+        const longUrlInput =
+          document.getElementById("longUrl");
+        const urlValue =
+          longUrlInput.value.trim(); // Remove whitespace
+
+        // Check if URL is empty
+        if (!urlValue) {
+          alert(
+            "Vui lòng nhập URL cần rút gọn!"
+          );
+          longUrlInput.focus(); // Place cursor back to input
+          return;
+        }
+
+        // Check https or http format
+        if (
+          !urlValue.startsWith("http://") &&
+          !urlValue.startsWith("https://")
+        ) {
+          alert(
+            "URL phải bắt đầu bằng http:// hoặc https://"
+          );
+          return;
+        }
+
+        // Check pass all validation
+        try {
+          const res = await fetch("/shorten", {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              original_url: urlValue,
+              custom_alias:
+                document.getElementById(
+                  "customAlias"
+                ).value,
+              expires_in_days: 1, // Default 1 day
+            }),
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            // Display result
+            loadLinks();
+          } else {
+            alert(
+              data.error || "Có lỗi xảy ra"
+            );
+          }
+        } catch (err) {
+          console.error("Lỗi:", err);
         }
       }
 
@@ -186,10 +211,12 @@
         }, 1000);
       }
 
-      window.onload = function() {
-        console.log("Trang web đã tải xong, bắt đầu load data...");
+      window.onload = function () {
+        console.log(
+          "Trang web đã tải xong, bắt đầu load data..."
+        );
         loadLinks();
-    };
+      };
     </script>
   </body>
 </html>
