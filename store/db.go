@@ -1,8 +1,8 @@
 package store
 
 import (
+	"github.com/glebarez/sqlite"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/models"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -13,7 +13,8 @@ func InitDB() {
 	// Use SQLite and the file is name "test.db"
 	DB, err = gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 	if err != nil {
-		panic("Failed to connect to database")
+		// Check error
+		panic("Failed to connect to database: " + err.Error())
 	}
 
 	// Auto migrate base on struct link
