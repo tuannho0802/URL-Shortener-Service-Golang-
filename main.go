@@ -34,6 +34,9 @@ func main() {
 
 	r.GET("/links", handlers.GetAllLinks) // Get Link List
 
+	r.PUT("/links/:id", handlers.UpdateLink)
+	r.DELETE("/links/:id", handlers.DeleteLink)
+
 	r.GET("/ws", handlers.HandleWebSocket)
 
 	r.GET("/:code", handlers.RedirectLink) // Redirect Link

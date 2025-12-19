@@ -65,6 +65,7 @@ Click Analytics: Real-time tracking of total visits per link.
 
 3. Run the application:
 ```bash
+  go mod tidy
   go run main.go
 ```
 4. Open your browser and navigate to: http://localhost:8080

@@ -73,7 +73,7 @@ func CreateShortLink(c *gin.Context) {
 	c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
-// 2. API Redirect
+// API Redirect
 func RedirectLink(c *gin.Context) {
 	code := c.Param("code")
 	var link models.Link
@@ -100,9 +100,65 @@ func RedirectLink(c *gin.Context) {
 	c.Redirect(http.StatusFound, link.OriginalURL)
 }
 
-// 3. API get list
+// API get all list
 func GetAllLinks(c *gin.Context) {
 	var links []models.Link
-	store.DB.Find(&links)
+	sortParam := c.DefaultQuery("sort", "created_at_desc")
+
+	query := store.DB
+	switch sortParam {
+	case "abc":
+		query = query.Order("short_code ASC")
+	case "clicks":
+		query = query.Order("click_count DESC")
+	case "oldest":
+		query = query.Order("created_at ASC")
+	default: // newest
+		query = query.Order("created_at DESC")
+	}
+
+	query.Find(&links)
 	c.JSON(http.StatusOK, links)
+}
+
+// Delete link
+func DeleteLink(c *gin.Context) {
+	id := c.Param("id")
+
+	// Remove in db
+	if err := store.DB.Delete(&models.Link{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa liên kết"})
+		return
+	}
+
+	// send notify
+	go NotifyDataChange()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa liên kết thành công"})
+}
+
+// Edit link
+func UpdateLink(c *gin.Context) {
+	id := c.Param("id")
+
+	var input struct {
+		OriginalURL string `json:"original_url"`
+	}
+
+	// Check data input
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	// Update new URL
+	if err := store.DB.Model(&models.Link{}).Where("id = ?", id).Update("original_url", input.OriginalURL).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật liên kết"})
+		return
+	}
+
+	// Notify
+	go NotifyDataChange()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công"})
 }

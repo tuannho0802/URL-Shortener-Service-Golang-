@@ -68,6 +68,24 @@
     </div>
 
     <h4>Danh sách Link</h4>
+    <div
+      class="d-flex justify-content-end mb-2"
+    >
+      <select
+        id="sortSelect"
+        class="form-select w-auto"
+        onchange="loadLinks()"
+      >
+        <option value="created_at_desc">
+          Mới nhất
+        </option>
+        <option value="oldest">Cũ nhất</option>
+        <option value="abc">Tên (A-Z)</option>
+        <option value="clicks">
+          Lượt click
+        </option>
+      </select>
+    </div>
     <table class="table mt-3">
       <thead>
         <tr>
@@ -75,6 +93,7 @@
           <th>Gốc</th>
           <th>Clicks</th>
           <th>Mã QR</th>
+          <th>Thao tác</th>
         </tr>
       </thead>
       <tbody id="linkList"></tbody>
@@ -141,7 +160,13 @@
 
       async function loadLinks() {
         try {
-          const res = await fetch("/links");
+          const sortVal =
+            document.getElementById(
+              "sortSelect"
+            ).value;
+          const res = await fetch(
+            "/links?sort=" + sortVal
+          );
           if (!res.ok)
             throw new Error(
               "Không thể kết nối server"
@@ -151,60 +176,54 @@
           const list =
             document.getElementById("linkList");
 
-          // check if data is empty
           if (!data || data.length === 0) {
-            list.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
+            list.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
             return;
           }
 
+          // Clear table
           list.innerHTML = data
-            .reverse()
             .map((l) => {
-              // Full URL with short code
               const shortFullUrl =
                 window.location.origin +
                 "/" +
                 l.short_code;
-              // 3rd API to generate QR
               const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${shortFullUrl}`;
 
               let timerHtml = l.expired_at
                 ? `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">⏱ Đang tính...</span>`
                 : `<span class="badge bg-light text-muted ms-2">∞</span>`;
-              // Display QR
+
               return `
-        <tr>
-            <td><a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a></td>
-            <td class="text-truncate" style="max-width: 200px;">${l.original_url}</td>
-            <td>
-                <span class="fw-bold">${l.click_count}</span>
-                ${timerHtml}
-            </td>
-            <td>
-                <div class="d-flex align-items-center gap-2">
-                    <img src="${qrImageUrl}" alt="QR" style="width: 50px; cursor: pointer;" 
-                         onclick="viewLargeQR('${qrImageUrl}')" title="Click để xem lớn">
-                    <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')" title="Tải về">
-                            💾
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="copyQR('${qrImageUrl}')" title="Copy ảnh">
-                            📋
-                        </button>
-                    </div>
-                </div>
-            </td>
-        </tr>`;
+                <tr>
+                    <td><a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a></td>
+                    <td class="text-truncate" style="max-width: 200px;" title="${l.original_url}">${l.original_url}</td>
+                    <td><span class="fw-bold">${l.click_count}</span> ${timerHtml}</td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <img src="${qrImageUrl}" alt="QR" style="width: 40px; cursor: pointer;" 
+                                 onclick="viewLargeQR('${qrImageUrl}')" title="Click để xem lớn">
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>
+                                <button class="btn btn-outline-secondary" onclick="copyQR('${qrImageUrl}')">📋</button>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
+                            <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
+                        </div>
+                    </td>
+                </tr>`;
             })
             .join("");
 
-          // Activate realtime counter
           if (
             typeof startRealtimeCounter ===
             "function"
-          ) {
+          )
             startRealtimeCounter();
-          }
         } catch (err) {
           console.error("Lỗi loadLinks:", err);
         }
@@ -244,6 +263,63 @@
               }
             });
         }, 1000);
+      }
+
+      // CRUD links
+      async function deleteLink(id) {
+        if (
+          !confirm(
+            "Bạn có chắc chắn muốn xóa liên kết này?"
+          )
+        )
+          return;
+        try {
+          const res = await fetch(
+            `/links/${id}`,
+            { method: "DELETE" }
+          );
+          if (res.ok) {
+           
+          } else {
+            alert("Không thể xóa liên kết");
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      async function editLink(id, oldUrl) {
+        const newUrl = prompt(
+          "Nhập URL gốc mới:",
+          oldUrl
+        );
+        if (!newUrl || newUrl === oldUrl)
+          return;
+
+        if (!newUrl.startsWith("http")) {
+          alert("URL không hợp lệ");
+          return;
+        }
+
+        try {
+          const res = await fetch(
+            `/links/${id}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                original_url: newUrl,
+              }),
+            }
+          );
+          if (!res.ok)
+            alert("Cập nhật thất bại");
+        } catch (err) {
+          console.error(err);
+        }
       }
 
       // Download QR code
