@@ -230,15 +230,14 @@
         </div>
         ${analyticsHtml} </td>
     <td>
-        <div class="d-flex align-items-center gap-2">
-            <img src="${qrImageUrl}" alt="QR" style="width: 40px; cursor: pointer;" 
-                 onclick="viewLargeQR('${qrImageUrl}')" title="Click để xem lớn">
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>
-                <button class="btn btn-outline-secondary" onclick="copyQR('${qrImageUrl}')">📋</button>
-            </div>
-        </div>
-    </td>
+    <button class="btn btn-sm btn-outline-info" 
+            onclick="viewLargeQR('${qrImageUrl}')">
+        🔍 Xem QR
+    </button>
+    <div class="btn-group btn-group-sm mt-1">
+        <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>
+    </div>
+</td>
     <td>
         <div class="btn-group btn-group-sm">
             <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
