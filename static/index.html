@@ -7,6 +7,22 @@
       rel="stylesheet"
     />
   </head>
+  <style>
+    .table td {
+        vertical-align: middle; /
+    }
+    .btn-group-sm > .btn {
+        padding: 0.25rem 0.5rem;
+    }
+    img[title="Click để xem lớn"] {
+        border: 1px solid #eee;
+        border-radius: 4px;
+        transition: transform 0.2s;
+    }
+    img[title="Click để xem lớn"]:hover {
+        transform: scale(1.1);
+    }
+  </style>
   <body class="container py-5">
     <h2 class="mb-4">URL Shortener Service</h2>
 
@@ -58,6 +74,7 @@
           <th>Mã</th>
           <th>Gốc</th>
           <th>Clicks</th>
+          <th>Mã QR</th>
         </tr>
       </thead>
       <tbody id="linkList"></tbody>
@@ -136,30 +153,48 @@
 
           // check if data is empty
           if (!data || data.length === 0) {
-            list.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
+            list.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
             return;
           }
 
           list.innerHTML = data
             .reverse()
             .map((l) => {
-              let timerHtml = "";
-              if (l.expired_at) {
-                timerHtml = `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">Đang tính...</span>`;
-              } else {
-                timerHtml = `<span class="badge bg-light text-muted ms-2">∞</span>`;
-              }
+              // Full URL with short code
+              const shortFullUrl =
+                window.location.origin +
+                "/" +
+                l.short_code;
+              // 3rd API to generate QR
+              const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${shortFullUrl}`;
 
+              let timerHtml = l.expired_at
+                ? `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">⏱ Đang tính...</span>`
+                : `<span class="badge bg-light text-muted ms-2">∞</span>`;
+              // Display QR
               return `
-                <tr>
-                    <td><a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a></td>
-                    <td class="text-truncate" style="max-width: 250px;">${l.original_url}</td>
-                    <td>
-                        <span class="fw-bold">${l.click_count}</span>
-                        ${timerHtml}
-                    </td>
-                </tr>
-            `;
+        <tr>
+            <td><a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a></td>
+            <td class="text-truncate" style="max-width: 200px;">${l.original_url}</td>
+            <td>
+                <span class="fw-bold">${l.click_count}</span>
+                ${timerHtml}
+            </td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <img src="${qrImageUrl}" alt="QR" style="width: 50px; cursor: pointer;" 
+                         onclick="viewLargeQR('${qrImageUrl}')" title="Click để xem lớn">
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')" title="Tải về">
+                            💾
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="copyQR('${qrImageUrl}')" title="Copy ảnh">
+                            📋
+                        </button>
+                    </div>
+                </div>
+            </td>
+        </tr>`;
             })
             .join("");
 
@@ -209,6 +244,50 @@
               }
             });
         }, 1000);
+      }
+
+      // Download QR code
+      async function downloadQR(url, code) {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const downloadUrl =
+          window.URL.createObjectURL(blob);
+        const link =
+          document.createElement("a");
+        link.href = downloadUrl;
+        link.download = `QR_${code}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      // Copy QR code
+      async function copyQR(url) {
+        try {
+          const data = await fetch(url);
+          const blob = await data.blob();
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              [blob.type]: blob,
+            }),
+          ]);
+          alert(
+            "Đã copy ảnh QR vào bộ nhớ tạm!"
+          );
+        } catch (err) {
+          alert(
+            "Trình duyệt không hỗ trợ copy ảnh trực tiếp. Bạn hãy dùng chuột phải -> Copy Image."
+          );
+        }
+      }
+
+      // Zoom QR code
+      function viewLargeQR(url) {
+        window.open(
+          url,
+          "_blank",
+          "width=300,height=300"
+        );
       }
 
       window.onload = function () {
