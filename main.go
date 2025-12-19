@@ -17,6 +17,9 @@ func main() {
 	store.InitDB()
 
 	r := gin.Default()
+	// Connect the frontend
+	r.LoadHTMLFiles("static/index.html")
+	r.GET("/", func(c *gin.Context) { c.HTML(200, "index.html", nil) })
 
 	// Define Routes API
 	r.POST("/shorten", handlers.CreateShortLink) // Create Link
