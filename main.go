@@ -18,13 +18,20 @@ func main() {
 
 	r := gin.Default()
 	// Connect the frontend
-	r.LoadHTMLFiles("static/index.html")
-	r.GET("/", func(c *gin.Context) { c.HTML(200, "index.html", nil) })
+	r.Static("/static", "./static")
+
+	// Route page return UI
+	r.GET("/", func(c *gin.Context) {
+
+		c.File("static/index.html")
+	})
 
 	// Define Routes API
 	r.POST("/shorten", handlers.CreateShortLink) // Create Link
-	r.GET("/:code", handlers.RedirectLink)       // Redirect Link
-	r.GET("/links", handlers.GetAllLinks)        // Get Link List
+
+	r.GET("/links", handlers.GetAllLinks) // Get Link List
+
+	r.GET("/:code", handlers.RedirectLink) // Redirect Link
 
 	r.Run(":8080") // Run server on port 8080
 }
