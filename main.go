@@ -15,20 +15,19 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	// Create db
-	store.InitDB()	
+	store.InitDB()
 
 	// Hub manage socket
 	go handlers.MainHub.Run()
 
 	r := gin.Default()
-	// Connect the frontend
+	// Load HTML
+	r.LoadHTMLGlob("templates/*.html")
+	// Connect the main page
 	r.Static("/static", "./static")
 
-	// Route page return UI
-	r.GET("/", func(c *gin.Context) {
-
-		c.File("static/index.html")
-	})
+	// Route page return main page
+	r.StaticFile("/", "./static/index.html")
 
 	// Define Routes API
 	r.POST("/shorten", handlers.CreateShortLink) // Create Link

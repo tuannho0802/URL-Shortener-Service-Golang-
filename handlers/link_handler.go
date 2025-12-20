@@ -101,10 +101,28 @@ func RedirectLink(c *gin.Context) {
 	var link models.Link
 	code := c.Param("code")
 
+	fmt.Printf("DEBUG: Đang truy cập mã code [%s]\n", code)
+
+	// If code is system file or null skip
+	if code == "" || code == "/" || code == "index.html" {
+
+		return
+	}
 	// check link exist
 	if err := store.DB.Where("short_code = ?", code).First(&link).Error; err != nil {
-		c.JSON(404, gin.H{"error": "Link không tồn tại"})
+		// Instead of render expired.html redirect to home
+		c.Redirect(http.StatusFound, "/")
 		return
+	}
+
+	// Check expired
+	if link.ExpiredAt != nil {
+		if time.Now().After(*link.ExpiredAt) {
+			// Stop save this page to cache
+			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.HTML(http.StatusGone, "expired.html", nil)
+			return
+		}
 	}
 
 	// Check Browser from user agent
@@ -143,7 +161,9 @@ func RedirectLink(c *gin.Context) {
 
 	go NotifyDataChange()
 
-	c.Redirect(302, link.OriginalURL)
+	
+
+	c.Redirect(http.StatusFound, link.OriginalURL)
 }
 
 // API get all list
@@ -181,6 +201,11 @@ func DeleteLink(c *gin.Context) {
 	go NotifyDataChange()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa liên kết thành công"})
+}
+
+// Delete expired link in db
+func CleanExpiredLinks() {
+	store.DB.Where("expired_at IS NOT NULL AND expired_at < ?", time.Now()).Delete(&models.Link{})
 }
 
 // Edit link
