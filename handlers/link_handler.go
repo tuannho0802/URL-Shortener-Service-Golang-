@@ -120,6 +120,9 @@ func RedirectLink(c *gin.Context) {
 		if time.Now().After(*link.ExpiredAt) {
 			// Stop save this page to cache
 			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Header("Pragma", "no-cache")
+			c.Header("Expires", "0")
 			c.HTML(http.StatusGone, "expired.html", nil)
 			return
 		}
@@ -160,8 +163,6 @@ func RedirectLink(c *gin.Context) {
 	})
 
 	go NotifyDataChange()
-
-	
 
 	c.Redirect(http.StatusFound, link.OriginalURL)
 }
@@ -208,28 +209,73 @@ func CleanExpiredLinks() {
 	store.DB.Where("expired_at IS NOT NULL AND expired_at < ?", time.Now()).Delete(&models.Link{})
 }
 
-// Edit link
+// Edit link and expired
 func UpdateLink(c *gin.Context) {
 	id := c.Param("id")
 
+	// Struct input
 	var input struct {
-		OriginalURL string `json:"original_url"`
+		OriginalURL   string `json:"original_url"`
+		DurationType  string `json:"duration_type"` // "minutes", "hours", "days", "infinite", "expired"
+		DurationValue int    `json:"duration_value"`
 	}
 
-	// Check data input
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	// Update new URL
-	if err := store.DB.Model(&models.Link{}).Where("id = ?", id).Update("original_url", input.OriginalURL).Error; err != nil {
+	// check if link exist
+	var link models.Link
+	if err := store.DB.First(&link, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy liên kết"})
+		return
+	}
+
+	// Handle expired
+	var newExpiredAt *time.Time
+	now := time.Now()
+
+	// if duration type is empty keep the same
+	if input.DurationType == "" {
+		newExpiredAt = link.ExpiredAt
+	} else {
+		switch input.DurationType {
+		case "minutes":
+			t := now.Add(time.Duration(input.DurationValue) * time.Minute)
+			newExpiredAt = &t
+		case "hours":
+			t := now.Add(time.Duration(input.DurationValue) * time.Hour)
+			newExpiredAt = &t
+		case "days":
+			t := now.AddDate(0, 0, input.DurationValue)
+			newExpiredAt = &t
+		case "infinite":
+			newExpiredAt = nil
+		case "expired":
+			t := now.Add(-1 * time.Second) // set to expired
+			newExpiredAt = &t
+		default:
+			newExpiredAt = link.ExpiredAt
+		}
+	}
+
+	// Update to db
+	updates := map[string]interface{}{
+		"original_url": input.OriginalURL,
+		"expired_at":   newExpiredAt,
+	}
+
+	if err := store.DB.Model(&link).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể cập nhật liên kết"})
 		return
 	}
 
-	// Notify
+	// notify
 	go NotifyDataChange()
 
-	c.JSON(http.StatusOK, gin.H{"message": "Cập nhật thành công"})
+	c.JSON(http.StatusOK, gin.H{
+		"message":        "Cập nhật thành công",
+		"new_expiration": newExpiredAt,
+	})
 }
