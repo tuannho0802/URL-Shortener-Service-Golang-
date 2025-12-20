@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -23,32 +24,51 @@ func GenerateShortCode(n int) string {
 
 // Create short link
 func CreateShortLink(c *gin.Context) {
-
 	var input struct {
-		OriginalURL string `json:"original_url"`
-		CustomAlias string `json:"custom_alias"`
-		// Add expires_in_days
-		ExpiresInDays int `json:"expires_in_days"`
+		OriginalURL   string `json:"original_url"`
+		CustomAlias   string `json:"custom_alias"`
+		DurationType  string `json:"duration_type"` // "minutes", "hours", "days", "infinite"
+		DurationValue int    `json:"duration_value"`
 	}
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(400, gin.H{"error": "Dữ liệu không hợp lệ"})
 		return
 	}
 
-	// Calculate the expiration date
+	// Debug
+	fmt.Printf("DEBUG: Type=%s, Value=%d\n", input.DurationType, input.DurationValue)
+
+	// Logic check
 	var expiredAt *time.Time
-	if input.ExpiresInDays > 0 {
-		t := time.Now().AddDate(0, 0, input.ExpiresInDays)
+
+	// Check duration if empty default 1 day
+	if input.DurationType == "" {
+		input.DurationType = "days"
+		input.DurationValue = 1
+	}
+
+	now := time.Now()
+	switch input.DurationType {
+	case "minutes":
+		t := now.Add(time.Duration(input.DurationValue) * time.Minute)
 		expiredAt = &t
-	} else {
-		// Default 1 day
-		t := time.Now().Add(24 * time.Hour)
+	case "hours":
+		t := now.Add(time.Duration(input.DurationValue) * time.Hour)
+		expiredAt = &t
+	case "days":
+		t := now.AddDate(0, 0, input.DurationValue)
+		expiredAt = &t
+	case "infinite":
+		expiredAt = nil // infinite
+	default:
+		// Return default if not match data input
+		t := now.AddDate(0, 0, 1)
 		expiredAt = &t
 	}
 
 	var code string
 	if input.CustomAlias != "" {
-		// Check if Allias exist
 		var existing models.Link
 		if err := store.DB.Where("short_code = ?", input.CustomAlias).First(&existing).Error; err == nil {
 			c.JSON(400, gin.H{"error": "Alias này đã được sử dụng"})
@@ -56,19 +76,21 @@ func CreateShortLink(c *gin.Context) {
 		}
 		code = input.CustomAlias
 	} else {
-		code = GenerateShortCode(6) // Generate 6 random code
+		code = GenerateShortCode(6)
 	}
 
-	// Save on db
 	newLink := models.Link{
 		OriginalURL: input.OriginalURL,
 		ShortCode:   code,
 		ClickCount:  0,
-		ExpiredAt:   expiredAt, // Store db
+		ExpiredAt:   expiredAt,
 	}
-	store.DB.Create(&newLink)
 
-	// notify
+	if err := store.DB.Create(&newLink).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể lưu vào database"})
+		return
+	}
+
 	go NotifyDataChange()
 
 	c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})

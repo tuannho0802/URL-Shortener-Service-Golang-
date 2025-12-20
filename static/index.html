@@ -8,19 +8,25 @@
     />
   </head>
   <style>
-    .table td {
-        vertical-align: middle; /
+        .table td {
+            vertical-align: middle; /
+        }
+        .btn-group-sm > .btn {
+            padding: 0.25rem 0.5rem;
+        }
+        img[title="Click để xem lớn"] {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            transition: transform 0.2s;
+        }
+        img[title="Click để xem lớn"]:hover {
+            transform: scale(1.1);
+        }
+        .badge {
+        font-weight: 500;
     }
-    .btn-group-sm > .btn {
-        padding: 0.25rem 0.5rem;
-    }
-    img[title="Click để xem lớn"] {
-        border: 1px solid #eee;
-        border-radius: 4px;
-        transition: transform 0.2s;
-    }
-    img[title="Click để xem lớn"]:hover {
-        transform: scale(1.1);
+    .italic {
+        font-style: italic;
     }
   </style>
   <body class="container py-5">
@@ -46,6 +52,43 @@
           class="form-control"
           placeholder="vidu: khuyen-mai"
         />
+      </div>
+      <!-- Custome expire -->
+      <div class="mb-3">
+        <label class="form-label fw-bold"
+          >Thời hạn hết hạn:</label
+        >
+        <div class="input-group">
+          <input
+            type="number"
+            id="expireValue"
+            class="form-control"
+            value="1"
+            min="1"
+            placeholder="Số lượng"
+          />
+          <select
+            id="expireUnit"
+            class="form-select"
+            style="max-width: 150px"
+            onchange="toggleExpireInput()"
+          >
+            <option value="minutes">
+              Phút
+            </option>
+            <option value="hours">Giờ</option>
+            <option value="days" selected>
+              Ngày
+            </option>
+            <option value="infinite">
+              Vô hạn (∞)
+            </option>
+          </select>
+        </div>
+        <small class="text-muted italic"
+          >* Mặc định là 1 ngày nếu không tùy
+          chỉnh.</small
+        >
       </div>
       <button
         class="btn btn-primary"
@@ -127,6 +170,21 @@
           return;
         }
 
+        const durationType =
+          document.getElementById(
+            "expireUnit"
+          ).value;
+        // | | 1 to avoid error NaN if input is empty
+        const durationValue =
+          Number.parseInt(
+            document.getElementById(
+              "expireValue"
+            ).value
+          ) || 1;
+
+          // //  Debug data
+          // console.log("Gửi đi:", { durationType, durationValue });
+
         // Check pass all validation
         try {
           const res = await fetch("/shorten", {
@@ -141,7 +199,9 @@
                 document.getElementById(
                   "customAlias"
                 ).value,
-              expires_in_days: 1, // Default 1 day
+              // set duration
+              duration_type: durationType,
+              duration_value: durationValue,
             }),
           });
 
@@ -149,6 +209,11 @@
           if (res.ok) {
             // Display result
             loadLinks();
+            // Clear input after submit
+            longUrlInput.value = "";
+            document.getElementById(
+              "customAlias"
+            ).value = "";
           } else {
             alert(
               data.error || "Có lỗi xảy ra"
@@ -292,6 +357,24 @@
               }
             });
         }, 1000);
+      }
+
+      // Handle toggle pick duration
+      function toggleExpireInput() {
+        const unit =
+          document.getElementById(
+            "expireUnit"
+          ).value;
+        const input = document.getElementById(
+          "expireValue"
+        );
+        if (unit === "infinite") {
+          input.classList.add("d-none");
+          input.value = 0; // 0 is infinite
+        } else {
+          input.classList.remove("d-none");
+          if (input.value == 0) input.value = 1; // Reset to 1 if before was 0
+        }
       }
 
       // CRUD links
