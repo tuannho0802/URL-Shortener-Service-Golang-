@@ -1,16 +1,34 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/models"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
 )
+
+// Click count info
+type clickInfo struct {
+	LinkID  uint
+	Browser string
+	OS      string
+}
+
+// Channel to store click info
+var clickChannel = make(chan clickInfo, 10000)
+
+// Run worker in goroutine
+func StartClickWorker(ctx context.Context) {
+	clickWorker(ctx)
+}
 
 // Generate random code
 func GenerateShortCode(n int) string {
@@ -98,53 +116,56 @@ func CreateShortLink(c *gin.Context) {
 
 // API Redirect
 func RedirectLink(c *gin.Context) {
-	var link models.Link
 	code := c.Param("code")
 
-	fmt.Printf("DEBUG: Đang truy cập mã code [%s]\n", code)
-
-	// If code is system file or null skip
-	if code == "" || code == "/" || code == "index.html" {
-
+	// Remove / and index.html
+	if code == "" || code == "/" || code == "index.html" || code == "favicon.ico" {
 		return
 	}
-	// check link exist
-	if err := store.DB.Where("short_code = ?", code).First(&link).Error; err != nil {
-		// Instead of render expired.html redirect to home
+
+	var link models.Link
+	// Just get original_url, expired_at, id
+	if err := store.DB.Select("original_url", "expired_at", "id").Where("short_code = ?", code).First(&link).Error; err != nil {
 		c.Redirect(http.StatusFound, "/")
 		return
 	}
 
 	// Check expired
-	if link.ExpiredAt != nil {
-		if time.Now().After(*link.ExpiredAt) {
-			// Stop save this page to cache
-			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-			c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-			c.Header("Pragma", "no-cache")
-			c.Header("Expires", "0")
-			c.HTML(http.StatusGone, "expired.html", nil)
-			return
-		}
+	if link.ExpiredAt != nil && time.Now().After(*link.ExpiredAt) {
+		c.HTML(http.StatusGone, "expired.html", nil)
+		return
 	}
 
-	// Check Browser from user agent
+	// Handle user agent
 	ua := c.GetHeader("User-Agent")
-	browser := "Unknown"
-	os := "Unknown"
+	browser, os := parseUserAgent(ua)
 
-	// Logic check
+	// Update optimize for db
+	// Automation click count and last browser
+	// Run in goroutine for client not wait for db
+	clickChannel <- clickInfo{
+		LinkID:  link.ID,
+		Browser: browser,
+		OS:      os,
+	}
+	// Redirect
+	c.Redirect(http.StatusFound, link.OriginalURL)
+}
+
+// Func quick parse user agent
+func parseUserAgent(ua string) (string, string) {
+	browser := "Other"
+	os := "Other"
 	if strings.Contains(ua, "Firefox") {
 		browser = "Firefox"
-	} else if strings.Contains(ua, "Chrome") && !strings.Contains(ua, "Edg") {
+	} else if strings.Contains(ua, "Chrome") {
 		browser = "Chrome"
-	} else if strings.Contains(ua, "Safari") && !strings.Contains(ua, "Chrome") {
+	} else if strings.Contains(ua, "Safari") {
 		browser = "Safari"
 	} else if strings.Contains(ua, "Edg") {
 		browser = "Edge"
 	}
 
-	// Check OS
 	if strings.Contains(ua, "Windows") {
 		os = "Windows"
 	} else if strings.Contains(ua, "Macintosh") {
@@ -155,16 +176,7 @@ func RedirectLink(c *gin.Context) {
 		os = "iOS"
 	}
 
-	// Update DB
-	store.DB.Model(&link).Updates(map[string]interface{}{
-		"click_count":  link.ClickCount + 1,
-		"last_browser": browser,
-		"last_os":      os,
-	})
-
-	go NotifyDataChange()
-
-	c.Redirect(http.StatusFound, link.OriginalURL)
+	return browser, os
 }
 
 // API get all list
@@ -278,4 +290,50 @@ func UpdateLink(c *gin.Context) {
 		"message":        "Cập nhật thành công",
 		"new_expiration": newExpiredAt,
 	})
+}
+
+// Collect all click for 2s and update
+
+var wg sync.WaitGroup
+
+func clickWorker(ctx context.Context) {
+	// use Select to capture the ctx signal. Done
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Worker: Nhận tín hiệu tắt, đang lưu click cuối cùng...")
+			processRemainingClicks()
+			return
+		default:
+			time.Sleep(2 * time.Second)
+			processRemainingClicks()
+		}
+	}
+}
+
+// Handle remaining clicks
+func processRemainingClicks() {
+	n := len(clickChannel)
+	if n == 0 {
+		return
+	}
+
+	batch := make(map[uint]int)
+	var lastBrowser, lastOS string
+
+	for i := 0; i < n; i++ {
+		info := <-clickChannel
+		batch[info.LinkID]++
+		lastBrowser = info.Browser
+		lastOS = info.OS
+	}
+
+	for id, count := range batch {
+		store.DB.Model(&models.Link{}).Where("id = ?", id).Updates(map[string]interface{}{
+			"click_count":  store.DB.Raw("click_count + ?", count),
+			"last_browser": lastBrowser,
+			"last_os":      lastOS,
+		})
+	}
+	NotifyDataChange()
 }

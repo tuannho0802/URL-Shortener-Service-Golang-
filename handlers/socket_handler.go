@@ -86,10 +86,24 @@ func (h *Hub) Run() {
 }
 
 // Notify data change
-func NotifyDataChange() {
-	select {
-	case MainHub.broadcast <- true:
-	default:
+var lastNotify time.Time
+var notifyMutex sync.Mutex
 
+func NotifyDataChange() {
+	notifyMutex.Lock()
+	defer notifyMutex.Unlock()
+
+	// Only allow one notify per 500ms
+	if time.Since(lastNotify) < 500*time.Millisecond {
+		return
+	}
+
+	lastNotify = time.Now()
+	{
+		select {
+		case MainHub.broadcast <- true:
+		default:
+
+		}
 	}
 }

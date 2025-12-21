@@ -1,51 +1,83 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"math/rand"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/handlers"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
-
-	"fmt"
-	"math/rand"
-	"time"
 )
 
 func main() {
-	// Seed for random func
 	rand.Seed(time.Now().UnixNano())
-
-	// Create db
 	store.InitDB()
 
-	// Hub manage socket
+	// Initialize a Context to manage the app lifecycle
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Run background progress
 	go handlers.MainHub.Run()
+	// Start Click Worker
+	go handlers.StartClickWorker(ctx)
 
 	r := gin.Default()
-	// Load HTML
 	r.LoadHTMLGlob("templates/*.html")
-	// Connect the main page
 	r.Static("/static", "./static")
-
-	// Route page return main page
 	r.StaticFile("/", "./static/index.html")
 
-	// Define Routes API
-	r.POST("/shorten", handlers.CreateShortLink) // Create Link
-
-	r.GET("/links", handlers.GetAllLinks) // Get Link List
-
+	r.POST("/shorten", handlers.CreateShortLink)
+	r.GET("/links", handlers.GetAllLinks)
 	r.PUT("/links/:id", handlers.UpdateLink)
 	r.DELETE("/links/:id", handlers.DeleteLink)
-
 	r.GET("/ws", handlers.HandleWebSocket)
+	r.GET("/:code", handlers.RedirectLink)
 
-	r.GET("/:code", handlers.RedirectLink) // Redirect Link
+	// Config HTTP Server 
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
+	}
 
-	fmt.Print("-------------------------------------------\n\n\n\n")
-	fmt.Println("🚀 URL Shortener Service is running!")
-	fmt.Println("👉 Local:   http://localhost:8080")
-	fmt.Println("\n\n\n-------------------------------------------")
+	// Run the server within a Goroutine to avoid clogging the main thread
+	go func() {
+		fmt.Print("-------------------------------------------\n")
+		fmt.Println("🚀 URL Shortener Service is running on http://localhost:8080")
+		fmt.Print("-------------------------------------------\n")
 
-	r.Run(":8080") // Run server on port 8080
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Listen error: %s\n", err)
+		}
+	}()
 
+	// Listen interrupt from OS
+	quit := make(chan os.Signal, 1)
+	// SIGINT: Ctrl+C, SIGTERM: Shutdown signal from Docker/System
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit // Chờ ở đây cho đến khi có tín hiệu
+
+	log.Println("⚠️  Đang bắt đầu quá trình tắt an toàn...")
+
+	// Run a Cancel command to have the Worker save the last click.
+	cancel() 
+	
+	// Custom for shutdown server gracefully 5s
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	// Wait a little bit fot the processRemainingClicks run to finish
+	time.Sleep(1 * time.Second) 
+	log.Println("✅ Server đã tắt hoàn toàn. Dữ liệu đã được bảo vệ.")
 }
