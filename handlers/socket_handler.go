@@ -93,8 +93,8 @@ func NotifyDataChange() {
 	notifyMutex.Lock()
 	defer notifyMutex.Unlock()
 
-	// Only allow one notify per 500ms
-	if time.Since(lastNotify) < 500*time.Millisecond {
+	// Only allow one notify per 2s
+	if time.Since(lastNotify) < 2000*time.Millisecond {
 		return
 	}
 

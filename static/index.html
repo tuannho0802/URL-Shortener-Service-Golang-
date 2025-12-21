@@ -143,8 +143,24 @@
       </thead>
       <tbody id="linkList"></tbody>
     </table>
+    <div
+      class="d-flex justify-content-between align-items-center mt-3"
+    >
+      <div class="text-muted" id="pageInfo">
+        Đang tải...
+      </div>
+      <nav>
+        <ul
+          class="pagination mb-0"
+          id="paginationControls"
+        ></ul>
+      </nav>
+    </div>
 
     <script>
+      // Pagination
+      let currentPage = 1;
+      const limitPerPage = 10; // limit of links per page
       async function shortenUrl() {
         const longUrlInput =
           document.getElementById("longUrl");
@@ -225,27 +241,40 @@
         }
       }
 
+      let isLoading = false;
+
       // Reload data display when new data from server
-      async function loadLinks() {
+      async function loadLinks(page = 1) {
+        if (isLoading) return; // loading
+        isLoading = true;
+        // Add page param
+        currentPage = page; // Update current page
         try {
           const sortVal =
             document.getElementById(
               "sortSelect"
             ).value;
+
+          // send request to server
           const res = await fetch(
-            "/links?sort=" + sortVal
+            `/links?sort=${sortVal}&page=${currentPage}&limit=${limitPerPage}`
           );
           if (!res.ok)
             throw new Error(
               "Không thể kết nối server"
             );
 
-          const data = await res.json();
+          // Parse object have data and pagination
+          const result = await res.json();
+          const data = result.data; // get links from data
+
           const list =
             document.getElementById("linkList");
 
+          // Check data from server
           if (!data || data.length === 0) {
             list.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
+            updatePagination(0, 1, 1); // update empty pagination
             return;
           }
 
@@ -263,7 +292,7 @@
             }
           );
 
-          // Check data from server
+          // Render each link from data
           data.forEach((l, index) => {
             const rowId = `row-${l.id}`;
             let row =
@@ -418,10 +447,82 @@
             }
           });
 
+          // Update UI pagination controls
+          updatePagination(
+            result.total,
+            result.page,
+            result.last_page
+          );
+
           startRealtimeCounter();
         } catch (err) {
           console.error("Lỗi loadLinks:", err);
+        } finally {
+          isLoading = false;
         }
+      }
+
+      // Render pagination UI
+      function updatePagination(
+        total,
+        page,
+        lastPage
+      ) {
+        const container =
+          document.getElementById(
+            "paginationControls"
+          );
+        const info =
+          document.getElementById("pageInfo");
+
+        // Update page info text
+        info.innerText = `Trang ${page} / ${lastPage} (Tổng ${total} links)`;
+
+        let html = "";
+
+        // Button Previous
+        html += `
+          <li class="page-item ${
+            page <= 1 ? "disabled" : ""
+          }">
+            <a class="page-link" href="#" onclick="loadLinks(${
+              page - 1
+            })">Trước</a>
+          </li>`;
+
+        // Page numbers
+        for (let i = 1; i <= lastPage; i++) {
+          // Chỉ hiển thị các trang gần trang hiện tại để tránh tràn màn hình nếu có quá nhiều trang
+          if (
+            i === 1 ||
+            i === lastPage ||
+            (i >= page - 2 && i <= page + 2)
+          ) {
+            html += `
+              <li class="page-item ${
+                i === page ? "active" : ""
+              }">
+                <a class="page-link" href="#" onclick="loadLinks(${i})">${i}</a>
+              </li>`;
+          } else if (
+            i === page - 3 ||
+            i === page + 3
+          ) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+          }
+        }
+
+        // Button Next
+        html += `
+          <li class="page-item ${
+            page >= lastPage ? "disabled" : ""
+          }">
+            <a class="page-link" href="#" onclick="loadLinks(${
+              page + 1
+            })">Sau</a>
+          </li>`;
+
+        container.innerHTML = html;
       }
 
       function startRealtimeCounter() {
@@ -709,7 +810,8 @@
           console.log(
             "Dữ liệu đã thay đổi! Đang cập nhật danh sách..."
           );
-          loadLinks(); // Recall loadlinks for new data
+          // Push currentPage to stay at current page
+          loadLinks(currentPage);
         }
       };
 

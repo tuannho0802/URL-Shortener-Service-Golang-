@@ -7,7 +7,9 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
-	"sync"
+
+	"math"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -109,8 +111,6 @@ func CreateShortLink(c *gin.Context) {
 		return
 	}
 
-	go NotifyDataChange()
-
 	c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
@@ -180,11 +180,34 @@ func parseUserAgent(ua string) (string, string) {
 }
 
 // API get all list
+// Update: not get all for browser safety (limit and pagination)
 func GetAllLinks(c *gin.Context) {
 	var links []models.Link
+
+	// Get page analysis parameters from URL
+	pageStr := c.DefaultQuery("page", "1")
+	limitStr := c.DefaultQuery("limit", "10")
 	sortParam := c.DefaultQuery("sort", "created_at_desc")
 
-	query := store.DB
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Calculate total
+	var total int64
+	store.DB.Model(&models.Link{}).Count(&total)
+
+	// Access pagination
+	query := store.DB.Limit(limit).Offset(offset)
+
 	switch sortParam {
 	case "abc":
 		query = query.Order("short_code ASC")
@@ -192,12 +215,23 @@ func GetAllLinks(c *gin.Context) {
 		query = query.Order("click_count DESC")
 	case "oldest":
 		query = query.Order("created_at ASC")
-	default: // newest
+	default:
 		query = query.Order("created_at DESC")
 	}
 
-	query.Find(&links)
-	c.JSON(http.StatusOK, links)
+	if err := query.Find(&links).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi truy vấn"})
+		return
+	}
+
+	// Return data and pagination
+	c.JSON(http.StatusOK, gin.H{
+		"data":      links,
+		"total":     total,
+		"page":      page,
+		"limit":     limit,
+		"last_page": int(math.Ceil(float64(total) / float64(limit))),
+	})
 }
 
 // Delete link
@@ -209,9 +243,6 @@ func DeleteLink(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa liên kết"})
 		return
 	}
-
-	// send notify
-	go NotifyDataChange()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa liên kết thành công"})
 }
@@ -283,9 +314,6 @@ func UpdateLink(c *gin.Context) {
 		return
 	}
 
-	// notify
-	go NotifyDataChange()
-
 	c.JSON(http.StatusOK, gin.H{
 		"message":        "Cập nhật thành công",
 		"new_expiration": newExpiredAt,
@@ -294,18 +322,19 @@ func UpdateLink(c *gin.Context) {
 
 // Collect all click for 2s and update
 
-var wg sync.WaitGroup
-
 func clickWorker(ctx context.Context) {
-	// use Select to capture the ctx signal. Done
+	// Create ticker 2s
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Worker: Nhận tín hiệu tắt, đang lưu click cuối cùng...")
+			log.Println("Worker: Nhận tín hiệu tắt, đang lưu dữ liệu cuối cùng...")
 			processRemainingClicks()
 			return
-		default:
-			time.Sleep(2 * time.Second)
+		case <-ticker.C:
+			// 2s handle click and notify
 			processRemainingClicks()
 		}
 	}
@@ -313,6 +342,9 @@ func clickWorker(ctx context.Context) {
 
 // Handle remaining clicks
 func processRemainingClicks() {
+	// always update every call from ticker
+	defer NotifyDataChange()
+
 	n := len(clickChannel)
 	if n == 0 {
 		return
@@ -335,5 +367,4 @@ func processRemainingClicks() {
 			"last_os":      lastOS,
 		})
 	}
-	NotifyDataChange()
 }
