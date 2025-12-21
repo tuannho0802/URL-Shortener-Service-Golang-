@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -13,7 +14,7 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow CORS
+		return true // Avoid CORS issue
 	},
 }
 
@@ -26,26 +27,10 @@ type Hub struct {
 
 var MainHub = Hub{
 	clients:   make(map[*websocket.Conn]bool),
-	broadcast: make(chan bool),
+	broadcast: make(chan bool, 100),
 }
 
-// Func call Hub to listen broadcast
-func (h *Hub) Run() {
-	for {
-		<-h.broadcast
-		h.mutex.Lock()
-		for client := range h.clients {
-			err := client.WriteJSON(gin.H{"action": "update_links"})
-			if err != nil {
-				client.Close()
-				delete(h.clients, client)
-			}
-		}
-		h.mutex.Unlock()
-	}
-}
-
-// Handle WebSocket
+// Upgrade HTTP to WebSocket
 func HandleWebSocket(c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -56,7 +41,7 @@ func HandleWebSocket(c *gin.Context) {
 	MainHub.clients[conn] = true
 	MainHub.mutex.Unlock()
 
-	// Keep connection open
+	// Clean after disconnect
 	defer func() {
 		MainHub.mutex.Lock()
 		delete(MainHub.clients, conn)
@@ -64,7 +49,7 @@ func HandleWebSocket(c *gin.Context) {
 		conn.Close()
 	}()
 
-	// Listen message
+	// keep connect and detect client out
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			break
@@ -72,7 +57,39 @@ func HandleWebSocket(c *gin.Context) {
 	}
 }
 
-// Func notify data change
+func (h *Hub) Run() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	hasUpdate := false
+
+	for {
+		select {
+		case <-h.broadcast:
+			hasUpdate = true
+
+		case <-ticker.C:
+			if hasUpdate {
+				h.mutex.Lock()
+				for client := range h.clients {
+					err := client.WriteJSON(gin.H{"action": "update_links"})
+					if err != nil {
+						client.Close()
+						delete(h.clients, client)
+					}
+				}
+				h.mutex.Unlock()
+				hasUpdate = false
+			}
+		}
+	}
+}
+
+// Notify data change
 func NotifyDataChange() {
-	MainHub.broadcast <- true
+	select {
+	case MainHub.broadcast <- true:
+	default:
+
+	}
 }

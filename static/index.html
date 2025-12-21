@@ -51,6 +51,7 @@
           id="customAlias"
           class="form-control"
           placeholder="vidu: khuyen-mai"
+          oninput="this.value = this.value.replace(/\s+/g, '-')"
         />
       </div>
       <!-- Custome expire -->
@@ -224,6 +225,7 @@
         }
       }
 
+      // Reload data display when new data from server
       async function loadLinks() {
         try {
           const sortVal =
@@ -247,77 +249,176 @@
             return;
           }
 
-          // Clear table
-          list.innerHTML = data
-            .map((l) => {
-              const shortFullUrl =
-                window.location.origin +
-                "/" +
-                l.short_code;
-              const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${shortFullUrl}`;
+          // Get a list of existing IDs in the DOM to remove links that have been deleted outside the computer.
+          const currentIds = data.map(
+            (l) => `row-${l.id}`
+          );
+          Array.from(list.children).forEach(
+            (row) => {
+              if (
+                row.id &&
+                !currentIds.includes(row.id)
+              )
+                row.remove();
+            }
+          );
 
-              let timerHtml = l.expired_at
-                ? `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">⏱ Đang tính...</span>`
-                : `<span class="badge bg-light text-muted ms-2">∞</span>`;
+          // Check data from server
+          data.forEach((l, index) => {
+            const rowId = `row-${l.id}`;
+            let row =
+              document.getElementById(rowId);
+            const shortFullUrl =
+              window.location.origin +
+              "/" +
+              l.short_code;
+            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${shortFullUrl}`;
 
-              //  Create icon or text for browser
-              let analyticsHtml = "";
-              if (l.last_browser || l.last_os) {
-                analyticsHtml = `
-        <div style="font-size: 0.7rem; line-height: 1.2;" class="text-muted mt-1">
-            <span title="Trình duyệt cuối cùng" class="badge border text-dark fw-normal">
-                🌐 ${l.last_browser || "N/A"}
-            </span>
-            <span title="Hệ điều hành cuối cùng" class="badge border text-dark fw-normal">
-                💻 ${l.last_os || "N/A"}
-            </span>
-        </div>
-    `;
+            // Check if row exist
+            if (!row) {
+              row =
+                document.createElement("tr");
+              row.id = rowId;
+              // Add row
+              if (index === 0)
+                list.prepend(row);
+              else list.appendChild(row);
+
+              row.innerHTML = `
+                          <td class="col-code"></td>
+                          <td class="col-url text-truncate" style="max-width: 200px;"></td>
+                          <td class="col-stats"></td>
+                          <td class="col-qr text-center"></td>
+                          <td class="col-action"></td>
+                      `;
+            }
+
+            // Update Row if data changed
+            const codeCell =
+              row.querySelector(".col-code");
+            const codeHtml = `
+                      <div class="d-flex align-items-center gap-2">
+                          <a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a>
+                          <button class="btn btn-sm btn-light border" onclick="copyToClipboard('${shortFullUrl}')">📋</button>
+                      </div>`;
+            if (codeCell.innerHTML !== codeHtml)
+              codeCell.innerHTML = codeHtml;
+
+            // Update root URL
+            const urlCell =
+              row.querySelector(".col-url");
+            if (
+              urlCell.innerText !==
+              l.original_url
+            ) {
+              urlCell.innerText =
+                l.original_url;
+              urlCell.title = l.original_url;
+            }
+
+            // Update status
+            const statsCell =
+              row.querySelector(".col-stats");
+
+            // Update click count
+            let clickSpan =
+              statsCell.querySelector(
+                ".click-count"
+              );
+            if (!clickSpan) {
+              statsCell.innerHTML = `
+                          <div><span class="fw-bold fs-5 click-count">${l.click_count}</span> clicks <span class="timer-area"></span></div>
+                          <div class="analytics-area"></div>
+                      `;
+              clickSpan =
+                statsCell.querySelector(
+                  ".click-count"
+                );
+            }
+            if (
+              clickSpan.innerText !=
+              l.click_count
+            )
+              clickSpan.innerText =
+                l.click_count;
+
+            // Update timer, re render time if data changed
+            const timerArea =
+              statsCell.querySelector(
+                ".timer-area"
+              );
+            const currentExpire = timerArea
+              .querySelector(".countdown")
+              ?.getAttribute("data-expire");
+
+            // redo logic if data changed
+            if (
+              l.expired_at !== currentExpire
+            ) {
+              if (!l.expired_at) {
+                timerArea.innerHTML = `<span class="badge bg-light text-muted ms-2">∞</span>`;
+              } else {
+                // Check if expired
+                const isExpired =
+                  new Date(
+                    l.expired_at
+                  ).getTime() -
+                    new Date().getTime() <=
+                  0;
+                if (isExpired) {
+                  timerArea.innerHTML = `<span class="badge bg-danger ms-2">Hết hạn</span>`;
+                } else {
+                  timerArea.innerHTML = `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">Đang tính...</span>`;
+                }
               }
+            }
 
-              return `
-             <tr>
-    <td>
-        <div class="d-flex align-items-center gap-2">
-            <a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a>
-            <button class="btn btn-sm btn-light border" 
-                    onclick="copyToClipboard('${shortFullUrl}')" 
-                    title="Copy link">
-                📋
-            </button>
-        </div>
-    </td>
-    <td class="text-truncate" style="max-width: 200px;" title="${l.original_url}">${l.original_url}</td>
-    <td>
-        <div>
-            <span class="fw-bold fs-5">${l.click_count}</span> clicks
-            ${timerHtml}
-        </div>
-        ${analyticsHtml} </td>
-    <td>
-    <button class="btn btn-sm btn-outline-info" 
-            onclick="viewLargeQR('${qrImageUrl}')">
-        🔍 Xem QR
-    </button>
-    <div class="btn-group btn-group-sm mt-1">
-        <button class="btn btn-outline-primary" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>
-    </div>
-</td>
-    <td>
-        <div class="btn-group btn-group-sm">
-            <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
-            <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
-        </div>
-    </td>
-</tr>`;
-            })
-            .join("");
+            // Update analytics
+            const analyticsArea =
+              statsCell.querySelector(
+                ".analytics-area"
+              );
+            const analyticsHtml =
+              l.last_browser || l.last_os
+                ? `
+                      <div style="font-size: 0.7rem;" class="text-muted mt-1">
+                          <span class="badge border text-dark fw-normal">🌐 ${
+                            l.last_browser ||
+                            "N/A"
+                          }</span>
+                          <span class="badge border text-dark fw-normal">💻 ${
+                            l.last_os || "N/A"
+                          }</span>
+                      </div>`
+                : "";
+            if (
+              analyticsArea.innerHTML !==
+              analyticsHtml
+            )
+              analyticsArea.innerHTML =
+                analyticsHtml;
 
-          if (
-            typeof startRealtimeCounter ===
-            "function"
-          )
-            startRealtimeCounter();
+            // Update QR and action
+            const qrCell =
+              row.querySelector(".col-qr");
+            if (!qrCell.innerHTML) {
+              qrCell.innerHTML = `
+                          <button class="btn btn-sm btn-outline-info" onclick="viewLargeQR('${qrImageUrl}')">🔍 Xem QR</button>
+                          <button class="btn btn-sm btn-outline-primary mt-1" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>`;
+            }
+
+            const actionCell =
+              row.querySelector(".col-action");
+            if (!actionCell.innerHTML) {
+              actionCell.innerHTML = `
+                          <div class="btn-group btn-group-sm">
+                              <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
+                              <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
+                          </div>`;
+            }
+          });
+
+          startRealtimeCounter();
         } catch (err) {
           console.error("Lỗi loadLinks:", err);
         }
@@ -325,38 +426,66 @@
 
       function startRealtimeCounter() {
         // Delete old interval
-        if (window.cntInterval)
-          clearInterval(window.cntInterval);
+        if (globalThis.cntInterval)
+          clearInterval(globalThis.cntInterval);
 
-        window.cntInterval = setInterval(() => {
+        const updateDisplay = () => {
           document
             .querySelectorAll(".countdown")
             .forEach((el) => {
-              const expire = new Date(
-                el.getAttribute("data-expire")
+              const expireAttr =
+                el.getAttribute("data-expire");
+              const expireTime = new Date(
+                expireAttr
               ).getTime();
+
+              if (Number.isNaN(expireTime)) {
+                el.innerHTML = "Lỗi ngày";
+                return;
+              }
+
               const now = new Date().getTime();
-              const diff = expire - now;
+              const diff = expireTime - now;
 
               if (diff <= 0) {
                 el.innerHTML = "Hết hạn";
                 el.className =
                   "badge bg-danger ms-2";
+                el.classList.remove(
+                  "countdown"
+                );
               } else {
                 const h = Math.floor(
-                  diff / (1000 * 60 * 60)
+                  diff / 3600000
                 );
                 const m = Math.floor(
-                  (diff % (1000 * 60 * 60)) /
-                    (1000 * 60)
+                  (diff % 3600000) / 60000
                 );
                 const s = Math.floor(
-                  (diff % (1000 * 60)) / 1000
+                  (diff % 60000) / 1000
                 );
-                el.innerHTML = `⏱ ${h}h ${m}m ${s}s`;
+
+                // Format 00h 00m 00s
+                const fH = h
+                  .toString()
+                  .padStart(2, "0");
+                const fM = m
+                  .toString()
+                  .padStart(2, "0");
+                const fS = s
+                  .toString()
+                  .padStart(2, "0");
+
+                el.innerHTML = `⏱ ${fH}h ${fM}m ${fS}s`;
               }
             });
-        }, 1000);
+        };
+
+        updateDisplay();
+        globalThis.cntInterval = setInterval(
+          updateDisplay,
+          1000
+        );
       }
 
       // Handle toggle pick duration
