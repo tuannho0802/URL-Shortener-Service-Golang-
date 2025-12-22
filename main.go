@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	
+
 	rand.Seed(time.Now().UnixNano())
 	store.InitDB()
 
@@ -39,6 +39,21 @@ func main() {
 	// AUTH ROUTES Public
 	r.POST("/register", handlers.Register)
 	r.POST("/login", handlers.Login)
+
+	// Admin Route
+	r.GET("/admin", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "admin.html", nil)
+	})
+
+	// Protect Admin Route
+	admin := r.Group("/api/admin")
+	admin.Use(middleware.AuthRequired()) // Validate token
+	admin.Use(middleware.AdminCheck())   // Check role for admin from db
+	{
+		admin.GET("/users", handlers.GetAllUsers)
+		admin.PUT("/users/:id/role", handlers.UpdateUserRole)
+		admin.DELETE("/users/:id", handlers.DeleteUser)
+	}
 
 	// PROTECTED ROUTES Private
 

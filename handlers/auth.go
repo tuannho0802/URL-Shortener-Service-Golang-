@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tuannho0802/URL-Shortener-Service-Golang-/middleware"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/models"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
 
@@ -50,6 +51,9 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// notify
+	NotifyDataChange(user.ID)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Đăng ký thành công"})
 }
 
@@ -77,10 +81,12 @@ func Login(c *gin.Context) {
 
 	// Add role to token
 	expirationTime := time.Now().Add(24 * time.Hour)
-	claims := jwt.MapClaims{
-		"user_id": user.ID,
-		"role":    user.Role,
-		"exp":     expirationTime.Unix(),
+	claims := middleware.MyClaims{
+		UserID: user.ID,
+		Role:   user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/middleware"
+	"github.com/tuannho0802/URL-Shortener-Service-Golang-/models"
+	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
 )
 
 // Config HTTP WebSocket Upgrader
@@ -88,6 +90,7 @@ func HandleWebSocket(c *gin.Context) {
 		}
 	}
 }
+
 func (h *Hub) Run() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -103,17 +106,37 @@ func (h *Hub) Run() {
 		case <-ticker.C:
 			if len(pendingUpdates) > 0 {
 				h.mutex.Lock()
-				for userID := range pendingUpdates {
-					if connections, ok := h.clients[userID]; ok {
-						for _, client := range connections {
-							err := client.WriteJSON(gin.H{"action": "update_links"})
-							if err != nil {
-								// If an error , close and delete will be handled in the HandleWebSocket defer
-								continue
+
+				// check global signal update
+				isGlobalUpdate := pendingUpdates[0]
+
+				// check all id that online
+				for onlineUID, connections := range h.clients {
+					var user models.User
+					// check user's role
+					if err := store.DB.Model(&models.User{}).Where("id = ?", onlineUID).Select("role").First(&user).Error; err == nil {
+
+						// notify user
+						if user.Role == "admin" && isGlobalUpdate {
+							for _, client := range connections {
+								_ = client.WriteJSON(gin.H{
+									"action": "update_users",
+									"msg":    "Dữ liệu người dùng hệ thống đã thay đổi",
+								})
+							}
+						}
+
+						// notify user
+						if pendingUpdates[onlineUID] {
+							for _, client := range connections {
+								_ = client.WriteJSON(gin.H{
+									"action": "update_links",
+								})
 							}
 						}
 					}
 				}
+
 				h.mutex.Unlock()
 				// reset list after update
 				pendingUpdates = make(map[uint]bool)
@@ -131,16 +154,19 @@ func NotifyDataChange(userID uint) {
 	notifyMutex.Lock()
 	defer notifyMutex.Unlock()
 
-	// Only allow one notify per 2s
-	if time.Since(lastNotify) < 2000*time.Millisecond {
-		return
+	// if admin is not delay
+	if userID != 0 {
+		if time.Since(lastNotify) < 2000*time.Millisecond {
+			return
+		}
+		lastNotify = time.Now()
 	}
 
-	lastNotify = time.Now()
 	{
 		select {
 		case MainHub.broadcast <- userID:
 		default:
+
 		}
 	}
 }
