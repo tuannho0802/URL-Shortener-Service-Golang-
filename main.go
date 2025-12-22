@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/handlers"
+	"github.com/tuannho0802/URL-Shortener-Service-Golang-/middleware"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
 )
 
@@ -34,14 +35,27 @@ func main() {
 	r.Static("/static", "./static")
 	r.StaticFile("/", "./static/index.html")
 
-	r.POST("/shorten", handlers.CreateShortLink)
-	r.GET("/links", handlers.GetAllLinks)
-	r.PUT("/links/:id", handlers.UpdateLink)
-	r.DELETE("/links/:id", handlers.DeleteLink)
+	// AUTH ROUTES Public
+	r.POST("/register", handlers.Register)
+	r.POST("/login", handlers.Login)
+
+	// PROTECTED ROUTES Private
+
+	protected := r.Group("/api")
+	protected.Use(middleware.AuthRequired())
+	{
+		protected.POST("/shorten", handlers.CreateShortLink)
+		protected.GET("/links", handlers.GetMyLinks)
+		protected.PUT("/links/:id", handlers.UpdateLink)
+		protected.DELETE("/links/:id", handlers.DeleteLink)
+
+	}
+
 	r.GET("/ws", handlers.HandleWebSocket)
+
 	r.GET("/:code", handlers.RedirectLink)
 
-	// Config HTTP Server 
+	// Config HTTP Server
 	srv := &http.Server{
 		Addr:    ":8080",
 		Handler: r,
@@ -67,8 +81,8 @@ func main() {
 	log.Println("⚠️  Đang bắt đầu quá trình tắt an toàn...")
 
 	// Run a Cancel command to have the Worker save the last click.
-	cancel() 
-	
+	cancel()
+
 	// Custom for shutdown server gracefully 5s
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
@@ -78,6 +92,6 @@ func main() {
 	}
 
 	// Wait a little bit fot the processRemainingClicks run to finish
-	time.Sleep(1 * time.Second) 
+	time.Sleep(1 * time.Second)
 	log.Println("✅ Server đã tắt hoàn toàn. Dữ liệu đã được bảo vệ.")
 }

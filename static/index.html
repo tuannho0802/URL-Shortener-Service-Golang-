@@ -6,30 +6,80 @@
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="/static/style.css"
+    />
   </head>
-  <style>
-        .table td {
-            vertical-align: middle; /
-        }
-        .btn-group-sm > .btn {
-            padding: 0.25rem 0.5rem;
-        }
-        img[title="Click để xem lớn"] {
-            border: 1px solid #eee;
-            border-radius: 4px;
-            transition: transform 0.2s;
-        }
-        img[title="Click để xem lớn"]:hover {
-            transform: scale(1.1);
-        }
-        .badge {
-        font-weight: 500;
-    }
-    .italic {
-        font-style: italic;
-    }
-  </style>
   <body class="container py-5">
+    <div id="authSection" class="text-end p-3">
+      <span id="userInfo" class="me-2"></span>
+      <button
+        id="loginBtn"
+        class="btn btn-outline-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#authModal"
+      >
+        Login / Register
+      </button>
+      <button
+        id="logoutBtn"
+        class="btn btn-outline-danger d-none"
+        onclick="logout()"
+      >
+        Logout
+      </button>
+    </div>
+
+    <div
+      class="modal fade"
+      id="authModal"
+      tabindex="-1"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              Authentication
+            </h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <input
+              type="text"
+              id="username"
+              class="form-control mb-2"
+              placeholder="Username"
+            />
+            <input
+              type="password"
+              id="password"
+              class="form-control mb-2"
+              placeholder="Password"
+            />
+            <div class="d-grid gap-2">
+              <button
+                class="btn btn-primary"
+                onclick="handleAuth('login')"
+              >
+                Login
+              </button>
+              <button
+                class="btn btn-secondary"
+                onclick="handleAuth('register')"
+              >
+                Register
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <h2 class="mb-4">URL Shortener Service</h2>
 
     <div class="card card-body mb-4">
@@ -54,7 +104,6 @@
           oninput="this.value = this.value.replace(/\s+/g, '-')"
         />
       </div>
-      <!-- Custome expire -->
       <div class="mb-3">
         <label class="form-label fw-bold"
           >Thời hạn hết hạn:</label
@@ -157,676 +206,6 @@
       </nav>
     </div>
 
-    <script>
-      // Pagination
-      let currentPage = 1;
-      const limitPerPage = 10; // limit of links per page
-      async function shortenUrl() {
-        const longUrlInput =
-          document.getElementById("longUrl");
-        const urlValue =
-          longUrlInput.value.trim(); // Remove whitespace
-
-        // Check if URL is empty
-        if (!urlValue) {
-          alert(
-            "Vui lòng nhập URL cần rút gọn!"
-          );
-          longUrlInput.focus(); // Place cursor back to input
-          return;
-        }
-
-        // Check https or http format
-        if (
-          !urlValue.startsWith("http://") &&
-          !urlValue.startsWith("https://")
-        ) {
-          alert(
-            "URL phải bắt đầu bằng http:// hoặc https://"
-          );
-          return;
-        }
-
-        const durationType =
-          document.getElementById(
-            "expireUnit"
-          ).value;
-        // | | 1 to avoid error NaN if input is empty
-        const durationValue =
-          Number.parseInt(
-            document.getElementById(
-              "expireValue"
-            ).value
-          ) || 1;
-
-        // //  Debug data
-        // console.log("Gửi đi:", { durationType, durationValue });
-
-        // Check pass all validation
-        try {
-          const res = await fetch("/shorten", {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              original_url: urlValue,
-              custom_alias:
-                document.getElementById(
-                  "customAlias"
-                ).value,
-              // set duration
-              duration_type: durationType,
-              duration_value: durationValue,
-            }),
-          });
-
-          const data = await res.json();
-          if (res.ok) {
-            // Display result
-            loadLinks();
-            // Clear input after submit
-            longUrlInput.value = "";
-            document.getElementById(
-              "customAlias"
-            ).value = "";
-          } else {
-            alert(
-              data.error || "Có lỗi xảy ra"
-            );
-          }
-        } catch (err) {
-          console.error("Lỗi:", err);
-        }
-      }
-
-      let isLoading = false;
-
-      // Reload data display when new data from server
-      async function loadLinks(page = 1) {
-        if (isLoading) return; // loading
-        isLoading = true;
-        // Add page param
-        currentPage = page; // Update current page
-        try {
-          const sortVal =
-            document.getElementById(
-              "sortSelect"
-            ).value;
-
-          // send request to server
-          const res = await fetch(
-            `/links?sort=${sortVal}&page=${currentPage}&limit=${limitPerPage}`
-          );
-          if (!res.ok)
-            throw new Error(
-              "Không thể kết nối server"
-            );
-
-          // Parse object have data and pagination
-          const result = await res.json();
-          const data = result.data; // get links from data
-
-          const list =
-            document.getElementById("linkList");
-
-          // Check data from server
-          if (!data || data.length === 0) {
-            list.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
-            updatePagination(0, 1, 1); // update empty pagination
-            return;
-          }
-
-          // Get a list of existing IDs in the DOM to remove links that have been deleted outside the computer.
-          const currentIds = data.map(
-            (l) => `row-${l.id}`
-          );
-          Array.from(list.children).forEach(
-            (row) => {
-              if (
-                row.id &&
-                !currentIds.includes(row.id)
-              )
-                row.remove();
-            }
-          );
-
-          // Render each link from data
-          data.forEach((l, index) => {
-            const rowId = `row-${l.id}`;
-            let row =
-              document.getElementById(rowId);
-            const shortFullUrl =
-              window.location.origin +
-              "/" +
-              l.short_code;
-            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${shortFullUrl}`;
-
-            // Check if row exist
-            if (!row) {
-              row =
-                document.createElement("tr");
-              row.id = rowId;
-              // Add row
-              if (index === 0)
-                list.prepend(row);
-              else list.appendChild(row);
-
-              row.innerHTML = `
-                          <td class="col-code"></td>
-                          <td class="col-url text-truncate" style="max-width: 200px;"></td>
-                          <td class="col-stats"></td>
-                          <td class="col-qr text-center"></td>
-                          <td class="col-action"></td>
-                      `;
-            }
-
-            // Update Row if data changed
-            const codeCell =
-              row.querySelector(".col-code");
-            const codeHtml = `
-                      <div class="d-flex align-items-center gap-2">
-                          <a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a>
-                          <button class="btn btn-sm btn-light border" onclick="copyToClipboard('${shortFullUrl}')">📋</button>
-                      </div>`;
-            if (codeCell.innerHTML !== codeHtml)
-              codeCell.innerHTML = codeHtml;
-
-            // Update root URL
-            const urlCell =
-              row.querySelector(".col-url");
-            if (
-              urlCell.innerText !==
-              l.original_url
-            ) {
-              urlCell.innerText =
-                l.original_url;
-              urlCell.title = l.original_url;
-            }
-
-            // Update status
-            const statsCell =
-              row.querySelector(".col-stats");
-
-            // Update click count
-            let clickSpan =
-              statsCell.querySelector(
-                ".click-count"
-              );
-            if (!clickSpan) {
-              statsCell.innerHTML = `
-                          <div><span class="fw-bold fs-5 click-count">${l.click_count}</span> clicks <span class="timer-area"></span></div>
-                          <div class="analytics-area"></div>
-                      `;
-              clickSpan =
-                statsCell.querySelector(
-                  ".click-count"
-                );
-            }
-            if (
-              clickSpan.innerText !=
-              l.click_count
-            )
-              clickSpan.innerText =
-                l.click_count;
-
-            // Update timer, re render time if data changed
-            const timerArea =
-              statsCell.querySelector(
-                ".timer-area"
-              );
-            const currentExpire = timerArea
-              .querySelector(".countdown")
-              ?.getAttribute("data-expire");
-
-            // redo logic if data changed
-            if (
-              l.expired_at !== currentExpire
-            ) {
-              if (!l.expired_at) {
-                timerArea.innerHTML = `<span class="badge bg-light text-muted ms-2">∞</span>`;
-              } else {
-                // Check if expired
-                const isExpired =
-                  new Date(
-                    l.expired_at
-                  ).getTime() -
-                    new Date().getTime() <=
-                  0;
-                if (isExpired) {
-                  timerArea.innerHTML = `<span class="badge bg-danger ms-2">Hết hạn</span>`;
-                } else {
-                  timerArea.innerHTML = `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">Đang tính...</span>`;
-                }
-              }
-            }
-
-            // Update analytics
-            const analyticsArea =
-              statsCell.querySelector(
-                ".analytics-area"
-              );
-            const analyticsHtml =
-              l.last_browser || l.last_os
-                ? `
-                      <div style="font-size: 0.7rem;" class="text-muted mt-1">
-                          <span class="badge border text-dark fw-normal">🌐 ${
-                            l.last_browser ||
-                            "N/A"
-                          }</span>
-                          <span class="badge border text-dark fw-normal">💻 ${
-                            l.last_os || "N/A"
-                          }</span>
-                      </div>`
-                : "";
-            if (
-              analyticsArea.innerHTML !==
-              analyticsHtml
-            )
-              analyticsArea.innerHTML =
-                analyticsHtml;
-
-            // Update QR and action
-            const qrCell =
-              row.querySelector(".col-qr");
-            if (!qrCell.innerHTML) {
-              qrCell.innerHTML = `
-                          <button class="btn btn-sm btn-outline-info" onclick="viewLargeQR('${qrImageUrl}')">🔍 Xem QR</button>
-                          <button class="btn btn-sm btn-outline-primary mt-1" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>`;
-            }
-
-            const actionCell =
-              row.querySelector(".col-action");
-            if (!actionCell.innerHTML) {
-              actionCell.innerHTML = `
-                          <div class="btn-group btn-group-sm">
-                              <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
-                              <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
-                          </div>`;
-            }
-          });
-
-          // Update UI pagination controls
-          updatePagination(
-            result.total,
-            result.page,
-            result.last_page
-          );
-
-          startRealtimeCounter();
-        } catch (err) {
-          console.error("Lỗi loadLinks:", err);
-        } finally {
-          isLoading = false;
-        }
-      }
-
-      // Render pagination UI
-      function updatePagination(
-        total,
-        page,
-        lastPage
-      ) {
-        const container =
-          document.getElementById(
-            "paginationControls"
-          );
-        const info =
-          document.getElementById("pageInfo");
-
-        // Update page info text
-        info.innerText = `Trang ${page} / ${lastPage} (Tổng ${total} links)`;
-
-        let html = "";
-
-        // Button Previous
-        html += `
-          <li class="page-item ${
-            page <= 1 ? "disabled" : ""
-          }">
-            <a class="page-link" href="#" onclick="loadLinks(${
-              page - 1
-            })">Trước</a>
-          </li>`;
-
-        // Page numbers
-        for (let i = 1; i <= lastPage; i++) {
-          // Chỉ hiển thị các trang gần trang hiện tại để tránh tràn màn hình nếu có quá nhiều trang
-          if (
-            i === 1 ||
-            i === lastPage ||
-            (i >= page - 2 && i <= page + 2)
-          ) {
-            html += `
-              <li class="page-item ${
-                i === page ? "active" : ""
-              }">
-                <a class="page-link" href="#" onclick="loadLinks(${i})">${i}</a>
-              </li>`;
-          } else if (
-            i === page - 3 ||
-            i === page + 3
-          ) {
-            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
-          }
-        }
-
-        // Button Next
-        html += `
-          <li class="page-item ${
-            page >= lastPage ? "disabled" : ""
-          }">
-            <a class="page-link" href="#" onclick="loadLinks(${
-              page + 1
-            })">Sau</a>
-          </li>`;
-
-        container.innerHTML = html;
-      }
-
-      function startRealtimeCounter() {
-        // Delete old interval
-        if (globalThis.cntInterval)
-          clearInterval(globalThis.cntInterval);
-
-        const updateDisplay = () => {
-          document
-            .querySelectorAll(".countdown")
-            .forEach((el) => {
-              const expireAttr =
-                el.getAttribute("data-expire");
-              const expireTime = new Date(
-                expireAttr
-              ).getTime();
-
-              if (Number.isNaN(expireTime)) {
-                el.innerHTML = "Lỗi ngày";
-                return;
-              }
-
-              const now = new Date().getTime();
-              const diff = expireTime - now;
-
-              if (diff <= 0) {
-                el.innerHTML = "Hết hạn";
-                el.className =
-                  "badge bg-danger ms-2";
-                el.classList.remove(
-                  "countdown"
-                );
-              } else {
-                const h = Math.floor(
-                  diff / 3600000
-                );
-                const m = Math.floor(
-                  (diff % 3600000) / 60000
-                );
-                const s = Math.floor(
-                  (diff % 60000) / 1000
-                );
-
-                // Format 00h 00m 00s
-                const fH = h
-                  .toString()
-                  .padStart(2, "0");
-                const fM = m
-                  .toString()
-                  .padStart(2, "0");
-                const fS = s
-                  .toString()
-                  .padStart(2, "0");
-
-                el.innerHTML = `⏱ ${fH}h ${fM}m ${fS}s`;
-              }
-            });
-        };
-
-        updateDisplay();
-        globalThis.cntInterval = setInterval(
-          updateDisplay,
-          1000
-        );
-      }
-
-      // Handle toggle pick duration
-      function toggleExpireInput() {
-        const unit =
-          document.getElementById(
-            "expireUnit"
-          ).value;
-        const input = document.getElementById(
-          "expireValue"
-        );
-        if (unit === "infinite") {
-          input.classList.add("d-none");
-          input.value = 0; // 0 is infinite
-        } else {
-          input.classList.remove("d-none");
-          if (input.value == 0) input.value = 1; // Reset to 1 if before was 0
-        }
-      }
-
-      // CRUD links
-      async function deleteLink(id) {
-        if (
-          !confirm(
-            "Bạn có chắc chắn muốn xóa liên kết này?"
-          )
-        )
-          return;
-        try {
-          const res = await fetch(
-            `/links/${id}`,
-            { method: "DELETE" }
-          );
-          if (res.ok) {
-          } else {
-            alert("Không thể xóa liên kết");
-          }
-        } catch (err) {
-          console.error(err);
-        }
-      }
-
-      // Open edit modal
-      function editLink(id, oldUrl) {
-        document.getElementById(
-          "editId"
-        ).value = id;
-        document.getElementById(
-          "editLongUrl"
-        ).value = oldUrl;
-        document.getElementById(
-          "editExpireUnit"
-        ).value = ""; // Default
-        toggleEditExpireInput();
-
-        // Render modal
-        const editModal = new bootstrap.Modal(
-          document.getElementById("editModal")
-        );
-        editModal.show();
-      }
-
-      // Function toggle pick duration
-      function toggleEditExpireInput() {
-        const unit = document.getElementById(
-          "editExpireUnit"
-        ).value;
-        const input = document.getElementById(
-          "editExpireValue"
-        );
-        if (
-          unit === "infinite" ||
-          unit === "expired" ||
-          unit === ""
-        ) {
-          input.classList.add("d-none");
-        } else {
-          input.classList.remove("d-none");
-        }
-      }
-
-      // Function send data to server
-      async function submitEdit() {
-        const id =
-          document.getElementById(
-            "editId"
-          ).value;
-        const newUrl = document.getElementById(
-          "editLongUrl"
-        ).value;
-        const durationType =
-          document.getElementById(
-            "editExpireUnit"
-          ).value;
-        const durationValue =
-          parseInt(
-            document.getElementById(
-              "editExpireValue"
-            ).value
-          ) || 0;
-
-        if (!newUrl.startsWith("http")) {
-          alert("URL không hợp lệ");
-          return;
-        }
-
-        try {
-          const res = await fetch(
-            `/links/${id}`,
-            {
-              method: "PUT",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              body: JSON.stringify({
-                original_url: newUrl,
-                duration_type: durationType,
-                duration_value: durationValue,
-              }),
-            }
-          );
-
-          if (res.ok) {
-            // close modal
-            const modalElement =
-              document.getElementById(
-                "editModal"
-              );
-            const modalInstance =
-              bootstrap.Modal.getInstance(
-                modalElement
-              );
-            modalInstance.hide();
-            // loadLinks() auto call by websocket
-          } else {
-            const data = await res.json();
-            alert(
-              data.error || "Cập nhật thất bại"
-            );
-          }
-        } catch (err) {
-          console.error("Lỗi cập nhật:", err);
-        }
-      }
-
-      // Copy link
-      function copyToClipboard(text) {
-        navigator.clipboard
-          .writeText(text)
-          .then(() => {
-            console.log("Copied: " + text);
-            alert(
-              "Đã copy link thành công: " + text
-            );
-          })
-          .catch((err) => {
-            console.error("Lỗi copy: ", err);
-          });
-      }
-
-      // Download QR code
-      async function downloadQR(url, code) {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        const downloadUrl =
-          window.URL.createObjectURL(blob);
-        const link =
-          document.createElement("a");
-        link.href = downloadUrl;
-        link.download = `QR_${code}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-
-      // Copy QR code
-      async function copyQR(url) {
-        try {
-          const data = await fetch(url);
-          const blob = await data.blob();
-          await navigator.clipboard.write([
-            new ClipboardItem({
-              [blob.type]: blob,
-            }),
-          ]);
-          alert(
-            "Đã copy ảnh QR vào bộ nhớ tạm!"
-          );
-        } catch (err) {
-          alert(
-            "Trình duyệt không hỗ trợ copy ảnh trực tiếp. Bạn hãy dùng chuột phải -> Copy Image."
-          );
-        }
-      }
-
-      // Zoom QR code
-      function viewLargeQR(url) {
-        window.open(
-          url,
-          "_blank",
-          "width=300,height=300"
-        );
-      }
-
-      window.onload = function () {
-        console.log(
-          "Trang web đã tải xong, bắt đầu load data..."
-        );
-        loadLinks();
-      };
-
-      // Define connect WebSocket
-      const socket = new WebSocket(
-        `ws://${window.location.host}/ws`
-      );
-
-      socket.onmessage = function (event) {
-        const data = JSON.parse(event.data);
-        if (data.action === "update_links") {
-          console.log(
-            "Dữ liệu đã thay đổi! Đang cập nhật danh sách..."
-          );
-          // Push currentPage to stay at current page
-          loadLinks(currentPage);
-        }
-      };
-
-      socket.onclose = function () {
-        console.log(
-          "Mất kết nối WebSocket. Đang thử kết nối lại..."
-        );
-        // auto reconnect
-        setTimeout(
-          () => location.reload(),
-          5000
-        );
-      };
-    </script>
-    <!-- Modal -->
     <div
       class="modal fade"
       id="editModal"
@@ -917,5 +296,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/app.js"></script>
   </body>
 </html>

@@ -33,5 +33,5 @@ func InitDB() {
     }
 
     // Auto migrate
-    DB.AutoMigrate(&models.Link{})
+    DB.AutoMigrate(&models.User{}, &models.Link{})
 }

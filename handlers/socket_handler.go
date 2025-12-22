@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tuannho0802/URL-Shortener-Service-Golang-/middleware"
 )
 
 // Config HTTP WebSocket Upgrader
@@ -20,66 +22,101 @@ var upgrader = websocket.Upgrader{
 
 // Manage Client
 type Hub struct {
-	clients   map[*websocket.Conn]bool
-	broadcast chan bool
+	// Manage clients
+	clients map[uint][]*websocket.Conn
+	// channel to broadcast data
+	broadcast chan uint
 	mutex     sync.Mutex
 }
 
 var MainHub = Hub{
-	clients:   make(map[*websocket.Conn]bool),
-	broadcast: make(chan bool, 100),
+	clients:   make(map[uint][]*websocket.Conn),
+	broadcast: make(chan uint, 100),
 }
 
 // Upgrade HTTP to WebSocket
 func HandleWebSocket(c *gin.Context) {
+	// get token from query string
+	tokenString := c.Query("token")
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Token is required"})
+		return
+	}
+
+	// Call validateToken function
+	claims, err := middleware.ValidateToken(tokenString)
+	if err != nil {
+		log.Printf("WS Auth Error: %v", err)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	// get user_id
+	userID := claims.UserID
+
+	// Upgrade HTTP to WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
+		log.Printf("WebSocket Upgrade Failed: %v", err)
 		return
 	}
 
 	MainHub.mutex.Lock()
-	MainHub.clients[conn] = true
+	MainHub.clients[userID] = append(MainHub.clients[userID], conn)
 	MainHub.mutex.Unlock()
 
-	// Clean after disconnect
 	defer func() {
 		MainHub.mutex.Lock()
-		delete(MainHub.clients, conn)
+		connections := MainHub.clients[userID]
+		for i, v := range connections {
+			if v == conn {
+				MainHub.clients[userID] = append(connections[:i], connections[i+1:]...)
+				break
+			}
+		}
+		// if not connections, delete
+		if len(MainHub.clients[userID]) == 0 {
+			delete(MainHub.clients, userID)
+		}
 		MainHub.mutex.Unlock()
 		conn.Close()
 	}()
 
-	// keep connect and detect client out
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
 			break
 		}
 	}
 }
-
 func (h *Hub) Run() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	hasUpdate := false
+	// Map to group userID for update ticker
+	pendingUpdates := make(map[uint]bool)
 
 	for {
 		select {
-		case <-h.broadcast:
-			hasUpdate = true
+		case userID := <-h.broadcast:
+			pendingUpdates[userID] = true
 
 		case <-ticker.C:
-			if hasUpdate {
+			if len(pendingUpdates) > 0 {
 				h.mutex.Lock()
-				for client := range h.clients {
-					err := client.WriteJSON(gin.H{"action": "update_links"})
-					if err != nil {
-						client.Close()
-						delete(h.clients, client)
+				for userID := range pendingUpdates {
+					if connections, ok := h.clients[userID]; ok {
+						for _, client := range connections {
+							err := client.WriteJSON(gin.H{"action": "update_links"})
+							if err != nil {
+								// If an error , close and delete will be handled in the HandleWebSocket defer
+								continue
+							}
+						}
 					}
 				}
 				h.mutex.Unlock()
-				hasUpdate = false
+				// reset list after update
+				pendingUpdates = make(map[uint]bool)
 			}
 		}
 	}
@@ -89,7 +126,8 @@ func (h *Hub) Run() {
 var lastNotify time.Time
 var notifyMutex sync.Mutex
 
-func NotifyDataChange() {
+// get userID to notify
+func NotifyDataChange(userID uint) {
 	notifyMutex.Lock()
 	defer notifyMutex.Unlock()
 
@@ -101,9 +139,8 @@ func NotifyDataChange() {
 	lastNotify = time.Now()
 	{
 		select {
-		case MainHub.broadcast <- true:
+		case MainHub.broadcast <- userID:
 		default:
-
 		}
 	}
 }

@@ -20,6 +20,7 @@ import (
 // Click count info
 type clickInfo struct {
 	LinkID  uint
+	UserID  uint
 	Browser string
 	OS      string
 }
@@ -44,6 +45,9 @@ func GenerateShortCode(n int) string {
 
 // Create short link
 func CreateShortLink(c *gin.Context) {
+
+	val, _ := c.Get("userID")
+	userID := val.(uint)
 	var input struct {
 		OriginalURL   string `json:"original_url"`
 		CustomAlias   string `json:"custom_alias"`
@@ -104,6 +108,7 @@ func CreateShortLink(c *gin.Context) {
 		ShortCode:   code,
 		ClickCount:  0,
 		ExpiredAt:   expiredAt,
+		UserID:      userID,
 	}
 
 	if err := store.DB.Create(&newLink).Error; err != nil {
@@ -125,7 +130,7 @@ func RedirectLink(c *gin.Context) {
 
 	var link models.Link
 	// Just get original_url, expired_at, id
-	if err := store.DB.Select("original_url", "expired_at", "id").Where("short_code = ?", code).First(&link).Error; err != nil {
+	if err := store.DB.Select("original_url", "expired_at", "id", "user_id").Where("short_code = ?", code).First(&link).Error; err != nil {
 		c.Redirect(http.StatusFound, "/")
 		return
 	}
@@ -145,6 +150,7 @@ func RedirectLink(c *gin.Context) {
 	// Run in goroutine for client not wait for db
 	clickChannel <- clickInfo{
 		LinkID:  link.ID,
+		UserID:  link.UserID,
 		Browser: browser,
 		OS:      os,
 	}
@@ -181,7 +187,10 @@ func parseUserAgent(ua string) (string, string) {
 
 // API get all list
 // Update: not get all for browser safety (limit and pagination)
-func GetAllLinks(c *gin.Context) {
+func GetMyLinks(c *gin.Context) {
+
+	val, _ := c.Get("userID")
+	userID := val.(uint)
 	var links []models.Link
 
 	// Get page analysis parameters from URL
@@ -203,10 +212,11 @@ func GetAllLinks(c *gin.Context) {
 
 	// Calculate total
 	var total int64
-	store.DB.Model(&models.Link{}).Count(&total)
+	// count only user links
+	store.DB.Model(&models.Link{}).Where("user_id = ?", userID).Count(&total)
 
-	// Access pagination
-	query := store.DB.Limit(limit).Offset(offset)
+	// Access pagination (user only)
+	query := store.DB.Where("user_id = ?", userID).Limit(limit).Offset(offset)
 
 	switch sortParam {
 	case "abc":
@@ -237,10 +247,14 @@ func GetAllLinks(c *gin.Context) {
 // Delete link
 func DeleteLink(c *gin.Context) {
 	id := c.Param("id")
+	val, _ := c.Get("userID")
+	userID := val.(uint)
 
-	// Remove in db
-	if err := store.DB.Delete(&models.Link{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể xóa liên kết"})
+	// Remove in db with condition user_id = userID and id = id
+	result := store.DB.Where("id = ? AND user_id = ?", id, userID).Delete(&models.Link{})
+
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Bạn không có quyền xóa link này"})
 		return
 	}
 
@@ -255,6 +269,8 @@ func CleanExpiredLinks() {
 // Edit link and expired
 func UpdateLink(c *gin.Context) {
 	id := c.Param("id")
+	val, _ := c.Get("userID")
+	userID := val.(uint)
 
 	// Struct input
 	var input struct {
@@ -270,8 +286,8 @@ func UpdateLink(c *gin.Context) {
 
 	// check if link exist
 	var link models.Link
-	if err := store.DB.First(&link, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Không tìm thấy liên kết"})
+	if err := store.DB.Where("id = ? AND user_id = ?", id, userID).First(&link).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Link không tồn tại hoặc bạn không có quyền sửa"})
 		return
 	}
 
@@ -342,29 +358,34 @@ func clickWorker(ctx context.Context) {
 
 // Handle remaining clicks
 func processRemainingClicks() {
-	// always update every call from ticker
-	defer NotifyDataChange()
-
 	n := len(clickChannel)
 	if n == 0 {
 		return
 	}
 
 	batch := make(map[uint]int)
+	userToNotify := make(map[uint]bool) // list of link to notify
 	var lastBrowser, lastOS string
 
 	for i := 0; i < n; i++ {
 		info := <-clickChannel
 		batch[info.LinkID]++
+		userToNotify[info.UserID] = true // note that user to notify
 		lastBrowser = info.Browser
 		lastOS = info.OS
 	}
 
+	// update db
 	for id, count := range batch {
 		store.DB.Model(&models.Link{}).Where("id = ?", id).Updates(map[string]interface{}{
 			"click_count":  store.DB.Raw("click_count + ?", count),
 			"last_browser": lastBrowser,
 			"last_os":      lastOS,
 		})
+	}
+
+	// send notify
+	for userID := range userToNotify {
+		NotifyDataChange(userID)
 	}
 }

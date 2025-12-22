@@ -1,0 +1,25 @@
+.table td {
+  vertical-align: middle;
+}
+
+.btn-group-sm > .btn {
+  padding: 0.25rem 0.5rem;
+}
+
+img[title="Click để xem lớn"] {
+  border: 1px solid #eee;
+  border-radius: 4px;
+  transition: transform 0.2s;
+}
+
+img[title="Click để xem lớn"]:hover {
+  transform: scale(1.1);
+}
+
+.badge {
+  font-weight: 500;
+}
+
+.italic {
+  font-style: italic;
+}
