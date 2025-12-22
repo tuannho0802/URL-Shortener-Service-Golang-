@@ -116,6 +116,8 @@ func CreateShortLink(c *gin.Context) {
 		return
 	}
 
+	NotifyDataChange(userID)
+
 	c.JSON(200, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
@@ -258,6 +260,8 @@ func DeleteLink(c *gin.Context) {
 		return
 	}
 
+	NotifyDataChange(userID)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Đã xóa liên kết thành công"})
 }
 
@@ -330,10 +334,13 @@ func UpdateLink(c *gin.Context) {
 		return
 	}
 
+	NotifyDataChange(userID)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":        "Cập nhật thành công",
 		"new_expiration": newExpiredAt,
 	})
+
 }
 
 // Collect all click for 2s and update

@@ -11,27 +11,40 @@ import (
 var DB *gorm.DB
 
 func InitDB() {
-    var err error
-    // Open connection
-    DB, err = gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
-    if err != nil {
-        panic("Failed to connect to database: " + err.Error())
-    }
+	var err error
+	// Open connection
+	DB, err = gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+	if err != nil {
+		panic("Failed to connect to database: " + err.Error())
+	}
 
-    // Activate SQLite's WAL mode
-    // Read and write same time and not block
-    sqlDB, err := DB.DB()
-    if err == nil {
-        DB.Exec("PRAGMA journal_mode=WAL;")
-        DB.Exec("PRAGMA synchronous=NORMAL;")
-        
-        // Config connection pool
-       
-        sqlDB.SetMaxOpenConns(100)           // Limited 100 connection
-        sqlDB.SetMaxIdleConns(10)            // keep alive 10 connection
-        sqlDB.SetConnMaxLifetime(time.Hour)  // set max lifetime connection
-    }
+	// Activate SQLite's WAL mode
+	// Read and write same time and not block
+	sqlDB, err := DB.DB()
+	if err == nil {
+		DB.Exec("PRAGMA journal_mode=WAL;")
+		DB.Exec("PRAGMA synchronous=NORMAL;")
 
-    // Auto migrate
-    DB.AutoMigrate(&models.User{}, &models.Link{})
+		// Config connection pool
+
+		sqlDB.SetMaxOpenConns(100)          // Limited 100 connection
+		sqlDB.SetMaxIdleConns(10)           // keep alive 10 connection
+		sqlDB.SetConnMaxLifetime(time.Hour) // set max lifetime connection
+	}
+
+	// Auto migrate
+	DB.AutoMigrate(&models.User{}, &models.Link{})
+
+	// auto set admin (optional)
+	usernameToMakeAdmin := "admin"
+
+	err = DB.Model(&models.User{}).
+		Where("username = ?", usernameToMakeAdmin).
+		Update("role", "admin").Error
+
+	if err != nil {
+		println("Lỗi khi nâng cấp Admin:", err.Error())
+	} else {
+		println("=== Đã xác nhận quyền Admin cho user:", usernameToMakeAdmin, "===")
+	}
 }

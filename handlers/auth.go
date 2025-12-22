@@ -12,22 +12,29 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var jwtKey = []byte("your_secret_key_123")
+
 func Register(c *gin.Context) {
 	var input struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		Username       string `json:"username" binding:"required"`
+		Password       string `json:"password" binding:"required"`
+		RetypePassword string `json:"retype_password" binding:"required"`
 	}
 
-	// Validate input
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username and password are required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Vui lòng nhập đầy đủ thông tin"})
 		return
 	}
 
-	// Hash password
+	// Check retype password
+	if input.Password != input.RetypePassword {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Mật khẩu nhập lại không khớp"})
+		return
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not hash password"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi xử lý mật khẩu"})
 		return
 	}
 
@@ -35,20 +42,16 @@ func Register(c *gin.Context) {
 	user := models.User{
 		Username: input.Username,
 		Password: string(hashedPassword),
+		Role:     "user",
 	}
 
-	// Save user
 	if err := store.DB.Create(&user).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists or database error"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tên đăng nhập đã tồn tại"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Registration successful"})
+	c.JSON(http.StatusOK, gin.H{"message": "Đăng ký thành công"})
 }
-
-// login
-// secret key
-var jwtKey = []byte("your_secret_key_123")
 
 func Login(c *gin.Context) {
 	var input struct {
@@ -57,28 +60,26 @@ func Login(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thông tin không hợp lệ"})
 		return
 	}
 
-	// Find user
 	var user models.User
 	if err := store.DB.Where("username = ?", input.Username).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Người dùng không tồn tại"})
 		return
 	}
 
-	// Check password
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Wrong password"})
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Sai mật khẩu"})
 		return
 	}
 
-	// Create token
-	expirationTime := time.Now().Add(24 * time.Hour) // Token 24h expires
+	// Add role to token
+	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := jwt.MapClaims{
 		"user_id": user.ID,
+		"role":    user.Role,
 		"exp":     expirationTime.Unix(),
 	}
 
@@ -86,13 +87,35 @@ func Login(c *gin.Context) {
 	tokenString, err := token.SignedString(jwtKey)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Không thể tạo mã xác thực"})
 		return
 	}
 
-	// Callback to client
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Login successful",
+		"message": "Đăng nhập thành công",
 		"token":   tokenString,
+		"role":    user.Role, // Add role
 	})
+}
+
+// ForgotPassword (send to email later)
+func ForgotPassword(c *gin.Context) {
+	var input struct {
+		Username string `json:"username"`
+	}
+	c.ShouldBindJSON(&input)
+
+	var user models.User
+	if err := store.DB.Where("username = ?", input.Username).First(&user).Error; err != nil {
+		c.JSON(404, gin.H{"error": "User không tồn tại"})
+		return
+	}
+
+	// reset token
+	resetToken := "MÃ_NGẪU_NHIÊN_123"
+	user.ResetToken = resetToken
+	user.ResetTokenExpiry = time.Now().Add(15 * time.Minute)
+	store.DB.Save(&user)
+
+	c.JSON(200, gin.H{"message": "Dùng mã này để reset (Sau này sẽ gửi qua email)", "token": resetToken})
 }

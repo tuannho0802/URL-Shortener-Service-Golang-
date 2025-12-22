@@ -14,6 +14,15 @@
   <body class="container py-5">
     <div id="authSection" class="text-end p-3">
       <span id="userInfo" class="me-2"></span>
+
+      <button
+        id="adminBtn"
+        class="btn btn-outline-dark d-none me-2"
+        onclick="location.href='/admin'"
+      >
+        Quản lý User ⚙️
+      </button>
+
       <button
         id="loginBtn"
         class="btn btn-outline-primary"
@@ -49,6 +58,10 @@
             ></button>
           </div>
           <div class="modal-body">
+            <div
+              id="authAlert"
+              class="alert alert-danger d-none"
+            ></div>
             <input
               type="text"
               id="username"
@@ -61,19 +74,49 @@
               class="form-control mb-2"
               placeholder="Password"
             />
+
+            <div
+              id="retypeSection"
+              class="d-none"
+            >
+              <input
+                type="password"
+                id="retype_password"
+                class="form-control mb-2"
+                placeholder="Retype Password"
+              />
+            </div>
+
             <div class="d-grid gap-2">
               <button
+                id="authSubmitBtn"
                 class="btn btn-primary"
                 onclick="handleAuth('login')"
               >
                 Login
               </button>
-              <button
-                class="btn btn-secondary"
-                onclick="handleAuth('register')"
-              >
-                Register
-              </button>
+
+              <div class="text-center mt-2">
+                <small>
+                  <a
+                    href="javascript:void(0)"
+                    id="toggleAuthLink"
+                    onclick="toggleAuthMode()"
+                    >Chưa có tài khoản? Đăng ký
+                    ngay</a
+                  >
+                </small>
+              </div>
+
+              <hr class="my-1" />
+              <small class="text-center">
+                <a
+                  href="javascript:void(0)"
+                  class="text-muted"
+                  onclick="handleForgotPassword()"
+                  >Quên mật khẩu?</a
+                >
+              </small>
             </div>
           </div>
         </div>

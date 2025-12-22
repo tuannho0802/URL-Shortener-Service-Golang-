@@ -509,16 +509,32 @@ async function handleAuth(type) {
     document.getElementById("username").value;
   const pass =
     document.getElementById("password").value;
+  const retype = document.getElementById(
+    "retype_password"
+  )?.value;
+
+  // quick check
+  if (type === "register" && pass !== retype) {
+    alert("Mật khẩu nhập lại không khớp!");
+    return;
+  }
+
+  const payload = {
+    username: user,
+    password: pass,
+  };
+
+  // if register send retype for backend
+  if (type === "register") {
+    payload.retype_password = retype;
+  }
 
   const response = await fetch(`/${type}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      username: user,
-      password: pass,
-    }),
+    body: JSON.stringify(payload),
   });
 
   const data = await response.json();
@@ -530,17 +546,20 @@ async function handleAuth(type) {
         data.token
       );
       localStorage.setItem("username", user);
-      alert("Login successful!");
+      localStorage.setItem(
+        "user_role",
+        data.role
+      ); // save role
+      alert("Đăng nhập thành công!");
       location.reload();
     } else {
       alert(
-        "Registration successful! Now you can login."
+        "Đăng ký thành công! Hãy đăng nhập."
       );
+      toggleAuthMode(); // toggle to login
     }
   } else {
-    alert(
-      data.error || "Authentication failed"
-    );
+    alert(data.error || "Lỗi xác thực");
   }
 }
 
@@ -550,6 +569,14 @@ function logout() {
 }
 
 function checkAuth() {
+  // check admin
+  const role =
+    localStorage.getItem("user_role");
+  if (role === "admin") {
+    document
+      .getElementById("adminBtn")
+      .classList.remove("d-none");
+  }
   const token =
     localStorage.getItem("jwt_token");
   const user = localStorage.getItem("username");
@@ -563,6 +590,12 @@ function checkAuth() {
     document.getElementById(
       "userInfo"
     ).innerText = `Hello, ${user}`;
+    // show admin btn
+    const adminBtn =
+      document.getElementById("adminBtn");
+    if (role === "admin" && adminBtn) {
+      adminBtn.classList.remove("d-none");
+    }
     return true;
   } else {
     document
@@ -646,3 +679,39 @@ window.onload = function () {
     }
   }
 };
+
+// auth mode
+let isRegisterMode = false;
+
+function toggleAuthMode() {
+  isRegisterMode = !isRegisterMode;
+  const retypeSection = document.getElementById(
+    "retypeSection"
+  );
+  const authSubmitBtn = document.getElementById(
+    "authSubmitBtn"
+  );
+  const toggleLink = document.getElementById(
+    "toggleAuthLink"
+  );
+
+  if (isRegisterMode) {
+    retypeSection.classList.remove("d-none");
+    authSubmitBtn.innerText = "Register Now";
+    authSubmitBtn.setAttribute(
+      "onclick",
+      "handleAuth('register')"
+    );
+    toggleLink.innerText =
+      "Đã có tài khoản? Đăng nhập";
+  } else {
+    retypeSection.classList.add("d-none");
+    authSubmitBtn.innerText = "Login";
+    authSubmitBtn.setAttribute(
+      "onclick",
+      "handleAuth('login')"
+    );
+    toggleLink.innerText =
+      "Chưa có tài khoản? Đăng ký ngay";
+  }
+}
