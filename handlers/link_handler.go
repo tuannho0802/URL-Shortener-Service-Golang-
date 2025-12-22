@@ -137,9 +137,14 @@ func RedirectLink(c *gin.Context) {
 		return
 	}
 
+	// Fix: cache make link not redirect
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+    c.Header("Pragma", "no-cache")
+    c.Header("Expires", "0")
+
 	// Check expired
 	if link.ExpiredAt != nil && time.Now().After(*link.ExpiredAt) {
-		c.HTML(http.StatusGone, "expired.html", nil)
+		c.HTML(http.StatusFound, "expired.html", nil)
 		return
 	}
 

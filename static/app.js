@@ -12,7 +12,8 @@ async function shortenUrl() {
   const urlValue = longUrlInput.value.trim();
 
   if (!urlValue) {
-    alert("Vui lòng nhập URL cần rút gọn!");
+    // TRIGGER: Shake animation instead of simple alert
+    LinkAnimate.shakeElement("longUrl");
     longUrlInput.focus();
     return;
   }
@@ -56,12 +57,16 @@ async function shortenUrl() {
 
     const data = await res.json();
     if (res.ok) {
+      // TRIGGER: Success scale animation for the card
+      LinkAnimate.animateSuccess();
       loadLinks();
       longUrlInput.value = "";
       document.getElementById(
         "customAlias"
       ).value = "";
     } else {
+      // TRIGGER: Shake on error
+      LinkAnimate.shakeElement("longUrl");
       alert(data.error || "Có lỗi xảy ra");
     }
   } catch (err) {
@@ -98,146 +103,90 @@ async function loadLinks(page = 1) {
     const list =
       document.getElementById("linkList");
 
+    // Check if data null
     if (!data || data.length === 0) {
-      list.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
+      list.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Chưa có link nào được tạo</td></tr>`;
       updatePagination(0, 1, 1);
       return;
     }
 
-    const currentIds = data.map(
-      (l) => `row-${l.id}`
-    );
-    Array.from(list.children).forEach((row) => {
-      if (
-        row.id &&
-        !currentIds.includes(row.id)
-      )
-        row.remove();
-    });
+    // Clear existing list
+    list.innerHTML = "";
 
-    data.forEach((l, index) => {
+    // Render rows
+    data.forEach((l) => {
       const rowId = `row-${l.id}`;
-      let row = document.getElementById(rowId);
       const shortFullUrl =
-        window.location.origin +
+        globalThis.location.origin +
         "/" +
         l.short_code;
       const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${shortFullUrl}`;
 
-      if (!row) {
-        row = document.createElement("tr");
-        row.id = rowId;
-        if (index === 0) list.prepend(row);
-        else list.appendChild(row);
-        row.innerHTML = `
-                    <td class="col-code"></td>
-                    <td class="col-url text-truncate" style="max-width: 200px;"></td>
-                    <td class="col-stats"></td>
-                    <td class="col-qr text-center"></td>
-                    <td class="col-action"></td>
-                `;
-      }
+      const row = document.createElement("tr");
+      row.id = rowId;
 
-      const codeCell =
-        row.querySelector(".col-code");
-      const codeHtml = `
-                <div class="d-flex align-items-center gap-2">
-                    <a href="/${l.short_code}" target="_blank" class="fw-bold text-decoration-none">${l.short_code}</a>
-                    <button class="btn btn-sm btn-light border" onclick="copyToClipboard('${shortFullUrl}')">📋</button>
-                </div>`;
-      if (codeCell.innerHTML !== codeHtml)
-        codeCell.innerHTML = codeHtml;
-
-      const urlCell =
-        row.querySelector(".col-url");
-      if (
-        urlCell.innerText !== l.original_url
-      ) {
-        urlCell.innerText = l.original_url;
-        urlCell.title = l.original_url;
-      }
-
-      const statsCell =
-        row.querySelector(".col-stats");
-      let clickSpan = statsCell.querySelector(
-        ".click-count"
-      );
-      if (!clickSpan) {
-        statsCell.innerHTML = `
-                    <div><span class="fw-bold fs-5 click-count">${l.click_count}</span> clicks <span class="timer-area"></span></div>
-                    <div class="analytics-area"></div>
-                `;
-        clickSpan = statsCell.querySelector(
-          ".click-count"
-        );
-      }
-      if (clickSpan.innerText != l.click_count)
-        clickSpan.innerText = l.click_count;
-
-      const timerArea = statsCell.querySelector(
-        ".timer-area"
-      );
-      const currentExpire = timerArea
-        .querySelector(".countdown")
-        ?.getAttribute("data-expire");
-
-      if (l.expired_at !== currentExpire) {
-        if (!l.expired_at) {
-          timerArea.innerHTML = `<span class="badge bg-light text-muted ms-2">∞</span>`;
-        } else {
-          const isExpired =
-            new Date(l.expired_at).getTime() -
-              new Date().getTime() <=
-            0;
-          if (isExpired) {
-            timerArea.innerHTML = `<span class="badge bg-danger ms-2">Hết hạn</span>`;
-          } else {
-            timerArea.innerHTML = `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">Đang tính...</span>`;
-          }
-        }
-      }
-
-      const analyticsArea =
-        statsCell.querySelector(
-          ".analytics-area"
-        );
-      const analyticsHtml =
-        l.last_browser || l.last_os
-          ? `
-                <div style="font-size: 0.7rem;" class="text-muted mt-1">
-                    <span class="badge border text-dark fw-normal">🌐 ${
-                      l.last_browser || "N/A"
-                    }</span>
-                    <span class="badge border text-dark fw-normal">💻 ${
-                      l.last_os || "N/A"
-                    }</span>
-                </div>`
-          : "";
-      if (
-        analyticsArea.innerHTML !==
-        analyticsHtml
-      )
-        analyticsArea.innerHTML = analyticsHtml;
-
-      const qrCell =
-        row.querySelector(".col-qr");
-      if (!qrCell.innerHTML) {
-        qrCell.innerHTML = `
-                    <button class="btn btn-sm btn-outline-info" onclick="viewLargeQR('${qrImageUrl}')">🔍 Xem QR</button>
-                    <button class="btn btn-sm btn-outline-primary mt-1" onclick="downloadQR('${qrImageUrl}', '${l.short_code}')">💾</button>`;
-      }
-
-      const actionCell = row.querySelector(
-        ".col-action"
-      );
-      if (!actionCell.innerHTML) {
-        actionCell.innerHTML = `
+      // FIX: Added 'this' to copyToClipboard to enable button bounce animation
+      row.innerHTML = `
+                <td>
+                    <a href="/${
+                      l.short_code
+                    }" target="_blank" class="fw-bold text-decoration-none">${
+        l.short_code
+      }</a>
+                </td>
+                 <td>
+                    <button class="btn btn-sm btn-light border shadow-sm" title="Copy link" onclick="copyToClipboard('${shortFullUrl}', this)">
+                        📋 Copy
+                    </button>
+                </td>
+                
+                <td class="text-truncate" style="max-width: 200px;" title="${
+                  l.original_url
+                }">
+                    ${l.original_url}
+                </td>
+                
+                <td>
+                    <div>
+                        <span class="fw-bold fs-5 click-count">${
+                          l.click_count
+                        }</span> clicks 
+                        <span class="timer-area">${renderTimerHtml(
+                          l
+                        )}</span>
+                    </div>
+                    <div class="analytics-area">${renderAnalyticsHtml(
+                      l
+                    )}</div>
+                </td>
+                
+                <td>
+                    <div class="btn-group">
+            <button class="btn btn-sm btn-outline-info" onclick="LinkAnimate.bounceButton(this); viewLargeQR('${qrImageUrl}')">🔍 Xem</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="LinkAnimate.bounceButton(this); downloadQR('${qrImageUrl}', '${
+        l.short_code
+      }')">💾 Lưu</button>
+        </div>
+                </td>
+                
+                <td>
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-warning" onclick="editLink(${l.id}, '${l.original_url}')">✏️</button>
-                        <button class="btn btn-danger" onclick="deleteLink(${l.id})">🗑️</button>
-                    </div>`;
-      }
+            <button class="btn btn-warning" onclick="LinkAnimate.bounceButton(this); editLink(${
+              l.id
+            }, '${
+        l.original_url
+      }')">✏️ Sửa</button>
+            <button class="btn btn-danger" onclick="LinkAnimate.bounceButton(this); deleteLink(${
+              l.id
+            })">🗑️ Xóa</button>
+        </div>
+                </td>
+            `;
+      list.appendChild(row);
     });
+
+    // TRIGGER: Staggered entrance animation for all table rows
+    LinkAnimate.animateTableRows();
 
     updatePagination(
       result.total,
@@ -250,6 +199,91 @@ async function loadLinks(page = 1) {
   } finally {
     isLoading = false;
   }
+}
+
+// FIX: Update copy function signature to receive the element
+function copyToClipboard(text, btnElement) {
+  // Check if button is disabled
+  if (
+    !btnElement ||
+    btnElement.classList.contains("disabled") ||
+    btnElement.disabled
+  )
+    return;
+
+  // animate button
+  LinkAnimate.bounceButton(btnElement);
+
+  // Disable button
+  btnElement.disabled = true;
+  btnElement.style.pointerEvents = "none"; // block cursor
+
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      // display success
+      const originalHtml = btnElement.innerHTML;
+      btnElement.innerHTML = "✅ Copied";
+
+      // change button color is lock
+      btnElement.classList.replace(
+        "btn-light",
+        "btn-success"
+      );
+
+      // return original btn
+      setTimeout(() => {
+        btnElement.innerHTML = originalHtml;
+        btnElement.classList.replace(
+          "btn-success",
+          "btn-light"
+        );
+
+        // Unlock button
+        btnElement.disabled = false;
+        btnElement.style.pointerEvents = "auto";
+      }, 1500);
+    })
+    .catch((err) => {
+      btnElement.disabled = false;
+      btnElement.style.pointerEvents = "auto";
+      console.error("Lỗi copy:", err);
+    });
+}
+
+// Helper functions
+function renderTimerHtml(l) {
+  // check expired_at
+  if (!l.expired_at) {
+    return `<span class="badge bg-light text-muted ms-2">∞</span>`;
+  }
+
+  // calc expire time
+  const expireTime = new Date(
+    l.expired_at
+  ).getTime();
+  const now = new Date().getTime();
+  const isExpired = expireTime - now <= 0;
+
+  if (isExpired) {
+    return `<span class="badge bg-danger ms-2">Hết hạn</span>`;
+  }
+
+  // return expire data from api
+  return `<span class="badge bg-warning text-dark ms-2 countdown" data-expire="${l.expired_at}">⏱ Đang tính...</span>`;
+}
+
+function renderAnalyticsHtml(l) {
+  if (!l.last_browser && !l.last_os) return "";
+  return `
+        <div style="font-size: 0.7rem;" class="text-muted mt-1">
+            <span class="badge border text-dark fw-normal">🌐 ${
+              l.last_browser || "N/A"
+            }</span>
+            <span class="badge border text-dark fw-normal">💻 ${
+              l.last_os || "N/A"
+            }</span>
+        </div>`;
 }
 
 function updatePagination(
@@ -424,7 +458,7 @@ async function submitEdit() {
     "editExpireUnit"
   ).value;
   const durationValue =
-    parseInt(
+    Number.parseInt(
       document.getElementById("editExpireValue")
         .value
     ) || 0;
@@ -461,6 +495,11 @@ async function submitEdit() {
           modalElement
         );
       modalInstance.hide();
+      // reload links
+      await loadLinks(currentPage);
+
+      // update counter
+      startRealtimeCounter();
     } else {
       const data = await res.json();
       alert(data.error || "Cập nhật thất bại");
@@ -470,28 +509,17 @@ async function submitEdit() {
   }
 }
 
-function copyToClipboard(text) {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      alert("Đã copy link thành công: " + text);
-    })
-    .catch((err) => {
-      console.error("Lỗi copy: ", err);
-    });
-}
-
 async function downloadQR(url, code) {
   const response = await fetch(url);
   const blob = await response.blob();
   const downloadUrl =
-    window.URL.createObjectURL(blob);
+    globalThis.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = downloadUrl;
   link.download = `QR_${code}.png`;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
+  childNode.remove(link);
 }
 
 function viewLargeQR(url) {
@@ -631,7 +659,7 @@ function connectWebSocket() {
   );
 
   socket = new WebSocket(
-    `ws://${window.location.host}/ws?token=${token}`
+    `ws://${globalThis.location.host}/ws?token=${token}`
   );
 
   socket.onopen = function () {
