@@ -12,51 +12,74 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv" // Read env file
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/handlers"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/middleware"
 	"github.com/tuannho0802/URL-Shortener-Service-Golang-/store"
 )
 
 func main() {
+	// Load environment variables from .env file
+	// Note: On Render, it will use actual environment variables instead of .env
+	if err := godotenv.Load(); err != nil {
+		log.Println("ℹ️ No .env file found, using system environment variables")
+	}
 
+	// // Debug db
+	// fmt.Println("Current DB URL:", os.Getenv("DATABASE_URL"))
+
+	// err := godotenv.Load()
+	// if err != nil {
+	// 	log.Println("⚠️  Warning: .env file not found, checking system variables...")
+	// }
+
+	// dsn := os.Getenv("DATABASE_URL")
+	// fmt.Printf("🔍 Debug: Loaded DSN is: [%s]\n", dsn) // Check if it print data in env
+
+	// if dsn == "" {
+	// 	log.Fatal("❌ Error: DATABASE_URL is empty. Please check your .env file.")
+	// }
+
+	// Initialize Infrastructure
 	rand.Seed(time.Now().UnixNano())
-	store.InitDB()
+	store.InitDB() // Now correctly uses DATABASE_URL from .env or Render
 
-	// Initialize a Context to manage the app lifecycle
+	// App Lifecycle Management
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Run background progress
+	// Start Background Services
 	go handlers.MainHub.Run()
-	// Start Click Worker
 	go handlers.StartClickWorker(ctx)
 
+	// Router Configuration
 	r := gin.Default()
+
+	// Load templates and static files
 	r.LoadHTMLGlob("templates/*.html")
 	r.Static("/static", "./static")
 	r.StaticFile("/", "./static/index.html")
 
-	// AUTH ROUTES Public
+	// --- ROUTES ---
+
+	// Auth (Public)
 	r.POST("/register", handlers.Register)
 	r.POST("/login", handlers.Login)
 
-	// Admin Route
+	// Admin (Protected)
 	r.GET("/admin", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "admin.html", nil)
 	})
 
-	// Protect Admin Route
 	admin := r.Group("/api/admin")
-	admin.Use(middleware.AuthRequired()) // Validate token
-	admin.Use(middleware.AdminCheck())   // Check role for admin from db
+	admin.Use(middleware.AuthRequired(), middleware.AdminCheck())
 	{
 		admin.GET("/users", handlers.GetAllUsers)
 		admin.PUT("/users/:id/role", handlers.UpdateUserRole)
 		admin.DELETE("/users/:id", handlers.DeleteUser)
 	}
 
-	// PROTECTED ROUTES Private
-
+	// Core API (Protected)
 	protected := r.Group("/api")
 	protected.Use(middleware.AuthRequired())
 	{
@@ -64,42 +87,44 @@ func main() {
 		protected.GET("/links", handlers.GetMyLinks)
 		protected.PUT("/links/:id", handlers.UpdateLink)
 		protected.DELETE("/links/:id", handlers.DeleteLink)
-
 	}
 
+	// System Routes
 	r.GET("/ws", handlers.HandleWebSocket)
-
 	r.GET("/:code", handlers.RedirectLink)
 
-	// Config HTTP Server
+	// Server Startup & Graceful Shutdown
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port if not specified
+	}
+
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + port,
 		Handler: r,
 	}
 
-	// Run the server within a Goroutine to avoid clogging the main thread
 	go func() {
-		fmt.Print("-------------------------------------------\n")
-		fmt.Println("🚀 URL Shortener Service is running on http://localhost:8080")
-		fmt.Print("-------------------------------------------\n")
+		fmt.Printf("-------------------------------------------\n")
+		fmt.Printf("🚀 Service is running on port %s\n", port)
+		fmt.Printf("-------------------------------------------\n")
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Listen error: %s\n", err)
 		}
 	}()
 
-	// Listen interrupt from OS
+	// Wait for termination signal
 	quit := make(chan os.Signal, 1)
-	// SIGINT: Ctrl+C, SIGTERM: Shutdown signal from Docker/System
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit // Chờ ở đây cho đến khi có tín hiệu
+	<-quit
 
-	log.Println("⚠️  Đang bắt đầu quá trình tắt an toàn...")
+	log.Println("⚠️  Shutting down gracefully...")
 
-	// Run a Cancel command to have the Worker save the last click.
+	// Trigger worker cleanup
 	cancel()
 
-	// Custom for shutdown server gracefully 5s
+	// Shutdown HTTP server with 5s timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
@@ -107,7 +132,6 @@ func main() {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
-	// Wait a little bit fot the processRemainingClicks run to finish
-	time.Sleep(1 * time.Second)
-	log.Println("✅ Server đã tắt hoàn toàn. Dữ liệu đã được bảo vệ.")
+	time.Sleep(1 * time.Second) // Final wait for workers
+	log.Println("✅ Server exited safely.")
 }
