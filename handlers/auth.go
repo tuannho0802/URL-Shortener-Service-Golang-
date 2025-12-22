@@ -52,7 +52,7 @@ func Register(c *gin.Context) {
 	}
 
 	// notify
-	NotifyDataChange(user.ID)
+	NotifyDataChange(0)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Đăng ký thành công"})
 }

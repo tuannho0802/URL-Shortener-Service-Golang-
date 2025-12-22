@@ -293,27 +293,53 @@
           localStorage.getItem("jwt_token");
         if (!token) return;
 
+        const protocol =
+          globalThis.location.protocol ===
+          "https:"
+            ? "wss"
+            : "ws";
         const socket = new WebSocket(
-          `ws://${window.location.host}/ws?token=${token}`
+          `${protocol}://${globalThis.location.host}/ws?token=${token}`
         );
 
+        socket.onopen = () =>
+          console.log(
+            "✅ Đã kết nối WebSocket Admin"
+          );
+
         socket.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          // check if action is update_links
-          if (data.action === "update_links") {
+          try {
+            const data = JSON.parse(event.data);
             console.log(
-              "Dữ liệu hệ thống thay đổi, đang cập nhật danh sách User..."
+              "📩 Nhận tin nhắn từ Server:",
+              data
             );
-            fetchUsers();
+
+            // listen to both
+            if (
+              data.action === "update_users" ||
+              data.action === "update_links"
+            ) {
+              console.log(
+                "🔄 Đang cập nhật lại bảng dữ liệu..."
+              );
+              fetchUsers();
+            }
+          } catch (e) {
+            console.error(
+              "❌ Lỗi xử lý tin nhắn WS:",
+              e
+            );
           }
         };
 
         socket.onclose = () => {
+          console.log(
+            "🔌 WS bị ngắt kết nối. Đang thử lại sau 3s..."
+          );
           setTimeout(connectWebSocket, 3000);
         };
       }
-
-      connectWebSocket();
 
       // load data
       window.onload = fetchUsers;
