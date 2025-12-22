@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25.5-alpine AS builder
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY . .
@@ -12,5 +12,6 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/main .
 COPY --from=builder /app/static ./static
+COPY --from=builder /app/templates ./templates
 EXPOSE 8080
 CMD ["./main"]
