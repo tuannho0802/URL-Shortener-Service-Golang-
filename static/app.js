@@ -22,8 +22,10 @@ async function shortenUrl() {
     !urlValue.startsWith("http://") &&
     !urlValue.startsWith("https://")
   ) {
-    alert(
-      "URL phải bắt đầu bằng http:// hoặc https://"
+    showNotify(
+      "Định dạng không đúng",
+      "URL phải bắt đầu bằng http:// hoặc https://",
+      "error"
     );
     return;
   }
@@ -31,7 +33,7 @@ async function shortenUrl() {
   const durationType =
     document.getElementById("expireUnit").value;
   const durationValue =
-    parseInt(
+    Number.parseInt(
       document.getElementById("expireValue")
         .value
     ) || 1;
@@ -55,11 +57,38 @@ async function shortenUrl() {
       }),
     });
 
-    const data = await res.json();
+    const result = await res.json();
+    // // DEBUG
+    // console.log(
+    //   "Cấu trúc JSON nhận được:",
+    //   result
+    // );
+
     if (res.ok) {
-      // TRIGGER: Success scale animation for the card
       LinkAnimate.animateSuccess();
       loadLinks();
+
+      // Get direct link from server
+      const finalLink =
+        result.short_url ||
+        (result.data && result.data.short_url);
+
+      if (finalLink) {
+        // Push notification
+        showNotify(
+          "Tạo link thành công!",
+          "Bạn có thể sử dụng link rút gọn dưới đây:",
+          "success",
+          finalLink
+        );
+      } else {
+        showNotify(
+          "Thành công",
+          "Link đã được tạo, hãy xem ở danh sách bên dưới.",
+          "success"
+        );
+      }
+
       longUrlInput.value = "";
       document.getElementById(
         "customAlias"
@@ -67,7 +96,12 @@ async function shortenUrl() {
     } else {
       // TRIGGER: Shake on error
       LinkAnimate.shakeElement("longUrl");
-      alert(data.error || "Có lỗi xảy ra");
+      showNotify(
+        "Lỗi tạo link",
+        data.error ||
+          "Vui lòng kiểm tra lại URL",
+        "error"
+      );
     }
   } catch (err) {
     console.error("Lỗi:", err);
@@ -390,18 +424,32 @@ function toggleExpireInput() {
   }
 }
 
+let deleteTargetId = null;
+
 async function deleteLink(id) {
-  if (
-    !confirm(
-      "Bạn có chắc chắn muốn xóa liên kết này?"
+  deleteTargetId = id; // Save ID
+  const confirmModal = new bootstrap.Modal(
+    document.getElementById(
+      "confirmDeleteModal"
     )
-  )
-    return;
+  );
+  confirmModal.show();
+
+  // Assign an event to the "Delete Now" button in the modal.
+  document.getElementById(
+    "btnConfirmDelete"
+  ).onclick = async function () {
+    confirmModal.hide();
+    executeDelete();
+  };
+}
+
+async function executeDelete() {
   try {
     const token =
       localStorage.getItem("jwt_token");
     const res = await fetch(
-      `/api/links/${id}`,
+      `/api/links/${deleteTargetId}`,
       {
         method: "DELETE",
         headers: {
@@ -409,8 +457,20 @@ async function deleteLink(id) {
         },
       }
     );
-    if (!res.ok)
-      alert("Không thể xóa liên kết");
+
+    if (res.ok) {
+      showNotify(
+        "Đã xóa",
+        "Liên kết đã được gỡ bỏ."
+      );
+      loadLinks(currentPage);
+    } else {
+      showNotify(
+        "Lỗi",
+        "Không thể xóa liên kết này",
+        "error"
+      );
+    }
   } catch (err) {
     console.error(err);
   }
@@ -496,13 +556,21 @@ async function submitEdit() {
         );
       modalInstance.hide();
       // reload links
+      showNotify(
+        "Cập nhật thành công",
+        "Thông tin liên kết đã được thay đổi."
+      ); // notify
       await loadLinks(currentPage);
 
       // update counter
       startRealtimeCounter();
     } else {
       const data = await res.json();
-      alert(data.error || "Cập nhật thất bại");
+      showNotify(
+        "Lỗi cập nhật",
+        "Không thể lưu thay đổi",
+        "error"
+      );
     }
   } catch (err) {
     console.error("Lỗi cập nhật:", err);
@@ -578,22 +646,43 @@ async function handleAuth(type) {
         "user_role",
         data.role
       ); // save role
-      alert("Đăng nhập thành công!");
-      location.reload();
+      showNotify(
+        "Thành công!",
+        "Đang chuyển hướng..."
+      );
+      setTimeout(() => location.reload(), 1500); // Delay 1.5s and reload
     } else {
-      alert(
-        "Đăng ký thành công! Hãy đăng nhập."
+      showNotify(
+        "Tuyệt vời!",
+        "Đăng ký thành công! Hãy đăng nhập ngay."
       );
       toggleAuthMode(); // toggle to login
     }
   } else {
-    alert(data.error || "Lỗi xác thực");
+    showNotify(
+      "Lỗi xác thực",
+      data.error ||
+        "Username hoặc mật khẩu không đúng",
+      "error"
+    );
   }
 }
 
+// Change: logout -> logoutConfirm
 function logout() {
-  localStorage.clear();
-  location.reload();
+  const logoutModal = new bootstrap.Modal(
+    document.getElementById(
+      "logoutConfirmModal"
+    )
+  );
+  logoutModal.show();
+
+  document.getElementById(
+    "btnConfirmLogout"
+  ).onclick = function () {
+    localStorage.clear();
+    location.reload();
+  };
 }
 
 function checkAuth() {
@@ -653,18 +742,24 @@ function connectWebSocket() {
 
   if (socket) socket.close();
 
-  console.log(
-    "Đang thử kết nối WS với token:",
-    token.substring(0, 20) + "..."
-  );
+  // // Debug
+  // console.log(
+  //   "Đang thử kết nối WS với token:",
+  //   token.substring(0, 20) + "..."
+  // );
 
+  // Fix: get websocket work on deploy
+  const protocol =
+    globalThis.location.protocol === "https:"
+      ? "wss://"
+      : "ws://";
   socket = new WebSocket(
-    `ws://${globalThis.location.host}/ws?token=${token}`
+    `${protocol}${globalThis.location.host}/ws?token=${token}`
   );
 
   socket.onopen = function () {
     console.log(
-      "✅ WebSocket đã kết nối thành công!"
+      "✅ Người dùng đã kết nối thành công!"
     );
   };
 
@@ -698,7 +793,7 @@ window.onload = function () {
     connectWebSocket();
   } else {
     console.log(
-      "User chưa đăng nhập, đợi action từ người dùng."
+      "❌ User chưa đăng nhập, xin vui lòng đăng nhập"
     );
     const list =
       document.getElementById("linkList");
@@ -741,5 +836,219 @@ function toggleAuthMode() {
     );
     toggleLink.innerText =
       "Chưa có tài khoản? Đăng ký ngay";
+  }
+}
+
+// Cleanup expired links
+async function cleanupExpiredLinks() {
+  const cleanupModal = new bootstrap.Modal(
+    document.getElementById(
+      "cleanupConfirmModal"
+    )
+  );
+  cleanupModal.show();
+
+  document.getElementById(
+    "btnConfirmCleanup"
+  ).onclick = async function () {
+    cleanupModal.hide();
+    try {
+      const token =
+        localStorage.getItem("jwt_token");
+      const res = await fetch(
+        "/api/links/cleanup",
+        {
+          // endpoint
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (res.ok) {
+        const result = await res.json();
+        showNotify(
+          "Đã dọn dẹp",
+          `Đã xóa thành công ${
+            result.deleted_count || 0
+          } link hết hạn.`
+        );
+        loadLinks(1);
+      } else {
+        showNotify(
+          "Lỗi",
+          "Không thể dọn dẹp vào lúc này.",
+          "error"
+        );
+      }
+    } catch (err) {
+      console.error("Lỗi Cleanup:", err);
+    }
+  };
+}
+
+// Modal notify
+function showNotify(
+  title,
+  message,
+  type = "success",
+  shortUrl = null
+) {
+  const modalElement = document.getElementById(
+    "notificationModal"
+  );
+  const modal = new bootstrap.Modal(
+    modalElement
+  );
+
+  const iconEl =
+    document.getElementById("notifyIcon");
+  const titleEl = document.getElementById(
+    "notifyTitle"
+  );
+  const msgEl = document.getElementById(
+    "notifyMessage"
+  );
+  const linkArea = document.getElementById(
+    "successLinkArea"
+  ); // ID match HTML
+  const inputLink = document.getElementById(
+    "resultShortUrl"
+  ); // ID match HTML
+
+  titleEl.innerText = title;
+  msgEl.innerText = message;
+
+  // Hide link area
+  linkArea.classList.add("d-none");
+
+  if (type === "success") {
+    iconEl.innerHTML = "✅";
+    if (shortUrl) {
+      linkArea.classList.remove("d-none");
+      inputLink.value = shortUrl;
+
+      // Auto select
+      setTimeout(() => inputLink.select(), 200);
+    }
+  } else {
+    iconEl.innerHTML = "❌";
+    linkArea.classList.add("d-none");
+  }
+  modal.show();
+}
+
+// Copy Link from modal
+function copyFromNotify() {
+  const copyText = document.getElementById(
+    "resultShortUrl"
+  );
+  const btn = document.getElementById(
+    "btnCopyNotify"
+  );
+
+  if (!copyText) return;
+
+  navigator.clipboard
+    .writeText(copyText.value)
+    .then(() => {
+      // Change button
+      const originalText = btn.innerHTML;
+      btn.innerHTML = "✅ Đã chép!";
+      btn.classList.replace(
+        "btn-primary",
+        "btn-success"
+      );
+
+      // Delay 2s
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.classList.replace(
+          "btn-success",
+          "btn-primary"
+        );
+      }, 2000);
+    })
+    .catch((err) => {
+      console.error("Lỗi khi copy: ", err);
+      // Optional old browser support
+      copyText.select();
+      document.execCommand("copy");
+    });
+}
+
+// Modal Cleanup
+function showCleanupModal() {
+  const modalElement = document.getElementById(
+    "cleanupConfirmModal"
+  );
+  const modal = new bootstrap.Modal(
+    modalElement
+  );
+  modal.show();
+
+  // get Event
+  const confirmBtn = document.getElementById(
+    "btnConfirmCleanup"
+  );
+  confirmBtn.onclick = async function () {
+    modal.hide(); // Close modal
+    await executeCleanup();
+  };
+}
+
+// Execute Cleanup
+async function executeCleanup() {
+  const token =
+    localStorage.getItem("jwt_token"); // check token from localStorage
+
+  if (!token) {
+    showNotify(
+      "Lỗi",
+      "Phiên làm việc hết hạn, vui lòng đăng nhập lại",
+      "error"
+    );
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "/api/links/cleanup",
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (response.ok) {
+      // Notify
+      showNotify(
+        "Thành công 🧹",
+        `Đã dọn dẹp xong ${result.deleted_count} liên kết hết hạn.`,
+        "success"
+      );
+      // Reload links
+      if (typeof loadLinks === "function")
+        loadLinks();
+    } else {
+      showNotify(
+        "Lỗi",
+        result.error || "Không thể dọn dẹp",
+        "error"
+      );
+    }
+  } catch (error) {
+    console.error("Cleanup error:", error);
+    showNotify(
+      "Lỗi",
+      "Kết nối server thất bại",
+      "error"
+    );
   }
 }

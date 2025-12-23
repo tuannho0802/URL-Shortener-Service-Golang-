@@ -9,6 +9,39 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="bg-light">
+    <!-- Login Modal -->
+    <div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0 shadow-lg">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold" id="authTitle">Chào mừng bạn! 👋</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">USERNAME</label>
+                    <input type="text" id="username" class="form-control" placeholder="Tên đăng nhập">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">PASSWORD</label>
+                    <input type="password" id="password" class="form-control" placeholder="Mật khẩu">
+                </div>
+                <div id="retypeSection" class="mb-3 d-none">
+                    <label class="form-label small fw-bold">RE-TYPE PASSWORD</label>
+                    <input type="password" id="retype_password" class="form-control" placeholder="Nhập lại mật khẩu">
+                </div>
+                <button id="authSubmitBtn" class="btn btn-primary w-100 py-2 fw-bold mt-3" onclick="handleAuth('login')">
+                    Login
+                </button>
+            </div>
+            <div class="modal-footer border-0 justify-content-center">
+                <a href="#" id="toggleAuthLink" onclick="toggleAuthMode()" class="text-decoration-none small">
+                    Chưa có tài khoản? Đăng ký ngay
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
     <div class="blob-bg"></div>
 
     <div class="container py-4">
@@ -75,13 +108,19 @@
 
         <div class="glass-card p-4">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4 class="fw-bold m-0"><i class="fas fa-history me-2"></i>Danh sách Link</h4>
-                <select id="sortSelect" class="form-select w-auto shadow-sm" onchange="loadLinks()">
-                    <option value="created_at_desc">Mới nhất</option>
-                    <option value="oldest">Cũ nhất</option>
-                    <option value="clicks">Lượt click</option>
-                </select>
-            </div>
+    <h4 class="fw-bold m-0"><i class="fas fa-history me-2"></i>Danh sách Link</h4>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-info shadow-sm d-none d-md-block" id="cleanupBtn" onclick="showCleanupModal()">
+            <i class="fas fa-broom"></i> Dọn dẹp
+        </button>
+        
+        <select id="sortSelect" class="form-select w-auto shadow-sm" onchange="loadLinks()">
+            <option value="created_at_desc">Mới nhất</option>
+            <option value="oldest">Cũ nhất</option>
+            <option value="clicks">Lượt click</option>
+        </select>
+    </div>
+</div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light">
@@ -147,6 +186,77 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- Modal Notification -->
+<div class="modal fade" id="notificationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0 shadow-lg text-center">
+            <div class="modal-body p-4">
+                <div id="notifyIcon" class="mb-3 fs-1"></div>
+                <h5 id="notifyTitle" class="fw-bold mb-2"></h5>
+                <p id="notifyMessage" class="text-muted mb-3"></p>
+                
+                <div id="successLinkArea" class="d-none mb-3">
+                    <div class="input-group">
+                        <input type="text" id="resultShortUrl" class="form-control bg-light" readonly>
+                        <button class="btn btn-primary" id="btnCopyNotify" onclick="copyFromNotify()">📋 Copy</button>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-secondary w-100" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="text-danger mb-3 fs-1">⚠️</div>
+                <h5 class="fw-bold">Xác nhận xóa?</h5>
+                <p class="text-muted small">Hành động này không thể hoàn tác.</p>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-light w-100" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" id="btnConfirmDelete" class="btn btn-danger w-100">Xóa ngay</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Logout -->
+ <div class="modal fade" id="logoutConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="text-warning mb-3 fs-1">🚪</div>
+                <h5 class="fw-bold">Đăng xuất?</h5>
+                <p class="text-muted small">Bạn có chắc muốn rời khỏi phiên làm việc này?</p>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-light w-100" data-bs-dismiss="modal">Ở lại</button>
+                    <button type="button" id="btnConfirmLogout" class="btn btn-primary w-100">Đăng xuất</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cleanupConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-body p-4 text-center">
+                <div class="text-info mb-3 fs-1">🧹</div>
+                <h5 class="fw-bold">Dọn dẹp liên kết hết hạn?</h5>
+                <p class="text-muted">Hệ thống sẽ xóa tất cả các liên kết đã hết hạn sử dụng để làm sạch danh sách.</p>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-light w-100" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" id="btnConfirmCleanup" class="btn btn-info w-100 text-white">Bắt đầu dọn dẹp</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 

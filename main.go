@@ -52,6 +52,20 @@ func main() {
 	go handlers.MainHub.Run()
 	go handlers.StartClickWorker(ctx)
 
+	// Worker for scheduled cleanup
+    go func() {
+        ticker := time.NewTicker(6 * time.Hour)
+        for {
+            select {
+            case <-ticker.C:
+                log.Println(" [System] Running scheduled cleanup...")
+                handlers.RunSystemAutoCleanup()
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+
 	// Router Configuration
 	r := gin.Default()
 
@@ -87,6 +101,7 @@ func main() {
 		protected.GET("/links", handlers.GetMyLinks)
 		protected.PUT("/links/:id", handlers.UpdateLink)
 		protected.DELETE("/links/:id", handlers.DeleteLink)
+		protected.DELETE("/links/cleanup", handlers.CleanupUserExpiredLinks)
 	}
 
 	// System Routes

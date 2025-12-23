@@ -139,8 +139,8 @@ func RedirectLink(c *gin.Context) {
 
 	// Fix: cache make link not redirect
 	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
-    c.Header("Pragma", "no-cache")
-    c.Header("Expires", "0")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
 
 	// Check expired
 	if link.ExpiredAt != nil && time.Now().After(*link.ExpiredAt) {
@@ -271,8 +271,48 @@ func DeleteLink(c *gin.Context) {
 }
 
 // Delete expired link in db
-func CleanExpiredLinks() {
-	store.DB.Where("expired_at IS NOT NULL AND expired_at < ?", time.Now()).Delete(&models.Link{})
+func CleanupUserExpiredLinks(c *gin.Context) {
+	// get userID from context
+	val, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Không tìm thấy thông tin người dùng"})
+		return
+	}
+	userID := val.(uint)
+
+	// Only delete expired links of the user
+
+	result := store.DB.Where("user_id = ? AND expired_at IS NOT NULL AND expired_at < ?", userID, time.Now()).Delete(&models.Link{})
+	// Debug
+	log.Printf(" [User Action] User %d cleaned up %d expired links\n", userID, result.RowsAffected)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Lỗi khi dọn dẹp liên kết"})
+		return
+	}
+
+	// Notify
+	NotifyDataChange(userID)
+
+	// Return
+	c.JSON(http.StatusOK, gin.H{
+		"status":        "success",
+		"message":       "Đã dọn dẹp các liên kết hết hạn của bạn",
+		"deleted_count": result.RowsAffected,
+	})
+}
+
+// Auto Cleanup expired links
+func RunSystemAutoCleanup() {
+	log.Println(" [System] Đang bắt đầu quét và dọn dẹp link hết hạn...")
+
+	// Delete expired links all users
+	result := store.DB.Where("expired_at IS NOT NULL AND expired_at < ?", time.Now()).Delete(&models.Link{})
+
+	if result.Error != nil {
+		log.Printf(" [Error] Lỗi khi tự động dọn dẹp: %v", result.Error)
+	} else if result.RowsAffected > 0 {
+		log.Printf(" [System] Đã dọn dẹp thành công %d liên kết hết hạn.", result.RowsAffected)
+	}
 }
 
 // Edit link and expired
